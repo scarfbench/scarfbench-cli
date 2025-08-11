@@ -1,0 +1,10 @@
+[package]
+name = "scarf"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+camino = "1.1.11"
+clap = "4.5.43"
+handlebars = "6.3.2"

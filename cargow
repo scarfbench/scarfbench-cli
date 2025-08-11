@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Project-local cargo wrapper (like mvnw)
+set -euo pipefail
+
+# Resolve repo root (dir that contains this script), independent of $PWD
+SELF="${BASH_SOURCE[0]:-$0}"
+ROOT="$(cd "$(dirname "$SELF")" && pwd)"
+
+# Project-local "venv" dirs
+export CARGO_HOME="$ROOT/.cargo"
+export RUSTUP_HOME="$ROOT/.rustup"
+export PATH="$CARGO_HOME/bin:${PATH}"
+
+# Optional: keep build artifacts in-repo (matches .envrc suggestion)
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
+# Optional: cargo install defaults to local bin
+export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$CARGO_HOME}"
+
+# If local rustup/cargo aren't present, install them locally
+if [ ! -x "$CARGO_HOME/bin/rustup" ] || [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+  echo "[cargow] installing local rustup into $RUSTUP_HOME (profile=minimal)"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path --profile minimal
+fi
+
+# Ensure rustup is initialized (creates ~/.cargo/env normally; here it's $CARGO_HOME/env)
+# Not strictly required since we set PATH, but harmless if present
+if [ -r "$CARGO_HOME/env" ]; then
+  # shellcheck disable=SC1090
+  . "$CARGO_HOME/env"
+fi
+
+# This will auto-resolve the pinned toolchain from rust-toolchain.toml if present
+# Hand off to *local* cargo, preserving args
+exec "$CARGO_HOME/bin/cargo" "$@"
