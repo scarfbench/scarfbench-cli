@@ -4,7 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.99"
 camino = "1.1.11"
-clap = "4.5.43"
+clap = {version = "4.5.44", features = ["derive"]}
 handlebars = "6.3.2"
+# UI stuff
+owo-colors = "4"         # colors & styles
+indicatif = "0.18.0"     # spinners/progress bars
+comfy-table = "7"        # pretty tables
+inquire = "0.7"          # interactive prompts (select/confirm/input)
+console = "0.16.0"       # terminal features (width, emojis, styling helpers)
+clippy = "0.0.302"
