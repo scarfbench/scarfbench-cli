@@ -135,5 +135,5 @@ This project is licensed under the terms specified in the `LICENSE` file.
 
 ---
 
-*Made with ❤️ for the developer community*
+*Made with ❤️ for the developer community from IBM Research*
 
