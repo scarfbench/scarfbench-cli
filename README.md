@@ -13,14 +13,16 @@ SCARF is a command-line interface tool designed to facilitate benchmarking of ag
 - **Flexible Configuration**: Support for custom output directories and extra arguments
 
 ## Installation (Global)
-
-```bash
-cargo install scarf
-```
+To install SCARF globally, you can use Cargo, the Rust package manager. This will allow you to run `scarf` from anywhere in your terminal.
 
 ### Prerequisites
 
-- Rust 1.70+ (2024 edition)
+Ensure you have Rust and Cargo installed. You can install them from [rustup.rs](https://rustup.rs/).
+### Install SCARF
+Once you have Rust and Cargo set up, you can install SCARF globally using the following
+```bash
+cargo install scarf
+```
 
 ### CARGO Wrapper
 
