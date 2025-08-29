@@ -1,3 +1,4 @@
 .cargo/
 .rustup/
 target/
+.DS_STORE
