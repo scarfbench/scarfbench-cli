@@ -35,6 +35,18 @@ enum Commands {
         to: String,
         #[arg(long, default_value = "generated")]
         out: std::path::PathBuf,
+        /// Optional: Docker image to run the agent in
+        #[arg(long)]
+        docker_image: Option<String>,
+        /// Optional: environment variables for Docker (KEY=VALUE). Can repeat.
+        #[arg(long = "env", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        docker_env: Vec<String>,
+        /// Docker network mode (default: none). Examples: none, bridge, host
+        #[arg(long, default_value = "none")]
+        docker_network: String,
+        /// Keep container after run (default: false -> --rm)
+        #[arg(long)]
+        docker_no_rm: bool,
         /// Extra args to pass to agent after `--`
         #[arg(last = true)]
         extra: Vec<String>,
@@ -44,12 +56,12 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    println!("{} {}", ROCKET, "Welcome to SCARF — sharper ports, faster!".bright_magenta().bold());
+    println!("{} {}", ui::SCARF, "Welcome to SCARF!".bright_magenta().bold());
 
     match cli.command {
         Commands::Init { source_dir, target_framework, output_dir } =>
             commands::init::run_init(&source_dir, &target_framework, &output_dir),
-        Commands::Run { agent, from, to, out, extra } =>
-            commands::run::run_agent(&agent, &from, &to, &out, &extra),
+        Commands::Run { agent, from, to, out, docker_image, docker_env, docker_network, docker_no_rm, extra } =>
+            commands::run::run_agent(&agent, &from, &to, &out, docker_image.as_deref(), &docker_env, &docker_network, docker_no_rm, &extra),
     }
 }

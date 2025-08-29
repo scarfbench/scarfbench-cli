@@ -5,6 +5,7 @@ use std::time::Duration;
 
 // Let's create some shortcuts for emojies
 pub const ROCKET: Emoji<'_, '_> = Emoji("🚀", "↗");
+pub const SCARF: Emoji<'_, '_> = Emoji("🧣", "");
 pub const CHECK: Emoji<'_, '_> = Emoji("✅", "✓");
 pub const CROSS: Emoji<'_, '_> = Emoji("❌", "x");
 pub const WARN: Emoji<'_, '_> = Emoji("⚠️", "!");
