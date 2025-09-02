@@ -40,6 +40,14 @@ cd scarf
 
 The binary will be available at `target/release/scarf`.
 
+### Add to Path
+
+```bash
+cargo install --path .
+```
+
+This will allow you to use `scarf` without needing the binary.
+
 ## Usage
 
 SCARF provides three main commands: `init`, `test`, and `run`.
