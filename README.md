@@ -73,7 +73,7 @@ scarf init \
 **What it does:**
 - Creates output directory structure
 - Copies source files for context
-- Creates `.tmp` and `.home` directories for agent use
+- Creates `.tmp` and `.home` directories for agent use (**these folders are where most agents store their chat sessions**)
 - Generates framework-specific templates
 
 ### 2. Test Docker Container Setup
