@@ -4,12 +4,11 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::collections::HashMap;
 use std::fs;
+
 use uuid::Uuid;
 
-pub fn run_agent(
-    agent: &Path,
+pub fn run_test(
     from: &Path,
-    to_fw: &str,
     out_root: &Path,
     docker_image: Option<&str>,
     dockerfile: Option<&Path>,
@@ -19,40 +18,34 @@ pub fn run_agent(
     docker_network: &str,
     docker_ports: &[String],
     docker_no_rm: bool,
-    extra: &[String],
+    command: &str,
 ) -> Result<()> {
-    info("Starting agent execution...");
+    info("Testing Docker container setup...");
     
     // Validate inputs
-    validate_inputs(agent, from, out_root, docker_image, dockerfile, docker_build_context)?;
+    validate_inputs(from, out_root, docker_image, dockerfile, docker_build_context)?;
     
     // Determine if we need to use Docker
     let use_docker = docker_image.is_some() || dockerfile.is_some();
     
     if use_docker {
-        run_agent_in_docker(
-            agent, from, to_fw, out_root, 
+        run_test_in_docker(
+            from, out_root,
             docker_image, dockerfile, docker_build_context, docker_name,
-            docker_env, docker_network, docker_ports, docker_no_rm, extra
+            docker_env, docker_network, docker_ports, docker_no_rm, command
         )
     } else {
-        run_agent_locally(agent, from, to_fw, out_root, extra)
+        Err(anyhow!("Docker is required for test command. Please specify --docker-image or --dockerfile"))
     }
 }
 
 fn validate_inputs(
-    agent: &Path,
     from: &Path,
     out_root: &Path,
     docker_image: Option<&str>,
     dockerfile: Option<&Path>,
     docker_build_context: Option<&Path>,
 ) -> Result<()> {
-    // Check if agent exists
-    if !agent.exists() {
-        return Err(anyhow!("Agent script not found: {}", agent.display()));
-    }
-    
     // Check if source directory exists
     if !from.exists() {
         return Err(anyhow!("Source directory not found: {}", from.display()));
@@ -82,10 +75,18 @@ fn validate_inputs(
     Ok(())
 }
 
-fn run_agent_in_docker(
-    agent: &Path,
+fn container_exists(container_name: &str) -> Result<bool> {
+    let output = Command::new("docker")
+        .args(&["ps", "-a", "--filter", &format!("name=^{}$", container_name), "--format", "{{.Names}}"])
+        .output()
+        .with_context(|| "Failed to check if container exists")?;
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.trim() == container_name)
+}
+
+fn run_test_in_docker(
     from: &Path,
-    to_fw: &str,
     out_root: &Path,
     docker_image: Option<&str>,
     dockerfile: Option<&Path>,
@@ -95,9 +96,9 @@ fn run_agent_in_docker(
     docker_network: &str,
     docker_ports: &[String],
     docker_no_rm: bool,
-    extra: &[String],
+    command: &str,
 ) -> Result<()> {
-    info("Running agent in Docker container...");
+    info("Testing Docker container setup...");
     
     // Determine the Docker image to use
     let image_name = if let Some(image) = docker_image {
@@ -112,7 +113,28 @@ fn run_agent_in_docker(
     // Generate container name if not provided
     let container_name = docker_name
         .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("scarf-{}", Uuid::new_v4().simple()));
+        .unwrap_or_else(|| format!("scarf-test-{}", Uuid::new_v4().simple()));
+    
+    // Check if container already exists
+    if container_exists(&container_name)? {
+        if let Some(_) = docker_name {
+            // User specified a custom name that conflicts
+            warning(&format!("Container '{}' already exists. You can:", container_name));
+            warning("  1. Remove the existing container: docker rm <container-name>");
+            warning("  2. Use a different name with --docker-name");
+            warning("  3. Let scarf generate a unique name (omit --docker-name)");
+            return Err(anyhow!("Container name '{}' is already in use", container_name));
+        } else {
+            // Auto-generated name conflicts (very unlikely, but handle it)
+            let new_name = format!("scarf-test-{}", Uuid::new_v4().simple());
+            info(&format!("Container name conflict detected. Using new name: {}", new_name));
+            return run_test_in_docker(
+                from, out_root,
+                docker_image, dockerfile, docker_build_context,
+                Some(&new_name), docker_env, docker_network, docker_ports, docker_no_rm, command
+            );
+        }
+    }
     
     // Prepare environment variables
     let env_vars = parse_env_vars(docker_env)?;
@@ -121,10 +143,17 @@ fn run_agent_in_docker(
     std::fs::create_dir_all(out_root)
         .with_context(|| format!("Failed to create output directory: {}", out_root.display()))?;
     
-    // Create home directory in output
+    // Copy source files to output directory so agent has full context
+    copy_directory_recursive(from, out_root)
+        .with_context(|| format!("Failed to copy source directory: {}", from.display()))?;
+    
+    // Create .tmp and .home directories in output
+    let tmp_dir = out_root.join(".tmp");
     let home_dir = out_root.join(".home");
+    std::fs::create_dir_all(&tmp_dir)
+        .with_context(|| format!("Failed to create .tmp directory: {}", tmp_dir.display()))?;
     std::fs::create_dir_all(&home_dir)
-        .with_context(|| format!("Failed to create home directory: {}", home_dir.display()))?;
+        .with_context(|| format!("Failed to create .home directory: {}", home_dir.display()))?;
     
     // Build Docker run command
     let mut docker_cmd = Command::new("docker");
@@ -138,7 +167,7 @@ fn run_agent_in_docker(
         docker_cmd.args(&["--network", docker_network]);
     }
     
-    // Remove container after run (unless --docker-no-rm is specified)
+    // Remove container after run (opposite of docker_no_rm)
     if !docker_no_rm {
         docker_cmd.arg("--rm");
     }
@@ -154,52 +183,16 @@ fn run_agent_in_docker(
     }
     
     // Volume mounts
-    let agent_abs = agent.canonicalize()
-        .with_context(|| format!("Failed to canonicalize agent path: {}", agent.display()))?;
-    let from_abs = from.canonicalize()
+    let source_abs = from.canonicalize()
         .with_context(|| format!("Failed to canonicalize source path: {}", from.display()))?;
-    let out_abs = out_root.canonicalize()
+    let output_abs = out_root.canonicalize()
         .with_context(|| format!("Failed to canonicalize output path: {}", out_root.display()))?;
     
-    // Mount agent script directory
-    let agent_dir_abs = if agent.is_absolute() {
-        let agent_dir = agent.parent()
-            .ok_or_else(|| anyhow!("Invalid agent path"))?;
-        agent_dir.canonicalize()
-            .with_context(|| format!("Failed to canonicalize agent directory: {}", agent_dir.display()))?
-    } else {
-        // For relative paths, try to resolve from current directory
-        let current_dir = std::env::current_dir()
-            .with_context(|| "Failed to get current directory")?;
-        let resolved_agent = current_dir.join(agent);
-        
-        // Verify the agent script exists
-        if !resolved_agent.exists() {
-            return Err(anyhow!("Agent script not found: {}", resolved_agent.display()));
-        }
-        
-        let agent_dir = resolved_agent.parent()
-            .ok_or_else(|| anyhow!("Invalid agent path"))?;
-        agent_dir.canonicalize()
-            .with_context(|| format!("Failed to canonicalize agent directory: {}", agent_dir.display()))?
-    };
+    // Mount source directory (read-only)
+    docker_cmd.args(&["-v", &format!("{}:/source:ro", source_abs.display())]);
     
-    docker_cmd.args(&["-v", &format!("{}:/agent:ro", agent_dir_abs.display())]);
-    
-    // Copy source files directly to output directory
-    copy_directory_recursive(from, out_root)
-        .with_context(|| format!("Failed to copy source directory: {}", from.display()))?;
-    
-    // Create .tmp and .home directories in output
-    let tmp_dir = out_root.join(".tmp");
-    let home_dir = out_root.join(".home");
-    std::fs::create_dir_all(&tmp_dir)
-        .with_context(|| format!("Failed to create .tmp directory: {}", tmp_dir.display()))?;
-    std::fs::create_dir_all(&home_dir)
-        .with_context(|| format!("Failed to create .home directory: {}", home_dir.display()))?;
-    
-    // Mount output directory (contains source files + agent will add results)
-    docker_cmd.args(&["-v", &format!("{}:/output", out_abs.display())]);
+    // Mount output directory (read-write)
+    docker_cmd.args(&["-v", &format!("{}:/output", output_abs.display())]);
     
     // Mount .tmp directory (canonicalize to absolute path)
     let tmp_abs = tmp_dir.canonicalize()
@@ -211,37 +204,26 @@ fn run_agent_in_docker(
         .with_context(|| format!("Failed to canonicalize .home path: {}", home_dir.display()))?;
     docker_cmd.args(&["-v", &format!("{}:/home", home_abs.display())]);
     
-    // Set working directory to output (where agent should work)
+    // Set working directory to output
     docker_cmd.args(&["-w", "/output"]);
+    
+    // Add detached mode flag BEFORE the image name
+    docker_cmd.arg("-d");
     
     // Image name
     docker_cmd.arg(&image_name);
     
-    // Agent command and arguments
-    let agent_filename = if agent.is_absolute() {
-        agent.file_name()
-            .ok_or_else(|| anyhow!("Invalid agent path"))?
-            .to_string_lossy()
+    // Command to run - use shell for complex commands
+    if command.contains(" ") || command.contains("'") || command.contains("\"") {
+        docker_cmd.args(&["sh", "-c", command]);
     } else {
-        // For relative paths, use the original filename
-        agent.file_name()
-            .ok_or_else(|| anyhow!("Invalid agent path"))?
-            .to_string_lossy()
-    };
+        docker_cmd.arg(command);
+    }
     
-    docker_cmd.arg(format!("/agent/{}", agent_filename));
+    info(&format!("Testing Docker container with command: {:?}", docker_cmd));
     
-    // Add scarf CLI arguments for directory structure and context
-    docker_cmd.args(&["--from", "/output"]);
-    docker_cmd.args(&["--to", to_fw]);
-    docker_cmd.args(&["--out", "/output"]);
+    info(&format!("Starting Docker container with command: {:?}", docker_cmd));
     
-    // Add extra arguments (agent scripts can handle additional arguments)
-    docker_cmd.args(extra);
-    
-    info(&format!("Running Docker command: {:?}", docker_cmd));
-    
-    // Execute Docker command
     let output = docker_cmd
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -249,63 +231,24 @@ fn run_agent_in_docker(
         .with_context(|| "Failed to execute Docker command")?;
     
     if output.status.success() {
-        success("Agent execution completed successfully!");
-        
-        // Clean up container if not using --rm and --docker-no-rm
-        if !docker_no_rm {
-            cleanup_container(&container_name)?;
-        }
-        
+        success("Docker container started successfully!");
+        info("Container is now running in the background.");
+        println!();
+        info("To access the container:");
+        println!("  docker exec -it {} bash", container_name);
+        println!();
+        info("To stop the container:");
+        println!("  docker stop {}", container_name);
+        println!();
+        info("To remove the container:");
+        println!("  docker rm {}", container_name);
+        println!();
+        info("Container setup is working correctly!");
         Ok(())
     } else {
         let error_msg = String::from_utf8_lossy(&output.stderr);
-        error(&format!("Agent execution failed: {}", error_msg));
-        
-        // Clean up container on failure
-        cleanup_container(&container_name)?;
-        
-        Err(anyhow!("Agent execution failed with exit code: {}", output.status))
-    }
-}
-
-fn run_agent_locally(
-    agent: &Path,
-    from: &Path,
-    to_fw: &str,
-    out_root: &Path,
-    extra: &[String],
-) -> Result<()> {
-    info("Running agent locally...");
-    
-    // Create output directory
-    std::fs::create_dir_all(out_root)
-        .with_context(|| format!("Failed to create output directory: {}", out_root.display()))?;
-    
-    // Build command
-    let mut cmd = Command::new(agent);
-    
-    // Add arguments
-    cmd.args(&["--from", from.to_string_lossy().as_ref()]);
-    cmd.args(&["--to", to_fw]);
-    cmd.args(&["--out", out_root.to_string_lossy().as_ref()]);
-    cmd.args(extra);
-    
-    info(&format!("Running command: {:?}", cmd));
-    
-    // Execute command
-    let output = cmd
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()
-        .with_context(|| "Failed to execute agent command")?;
-    
-    if output.status.success() {
-        success("Agent execution completed successfully!");
-        Ok(())
-    } else {
-        let error_msg = String::from_utf8_lossy(&output.stderr);
-        error(&format!("Agent execution failed: {}", error_msg));
-        Err(anyhow!("Agent execution failed with exit code: {}", output.status))
+        error(&format!("Docker container test failed: {}", error_msg));
+        Err(anyhow!("Docker container test failed with exit code: {}", output.status))
     }
 }
 
@@ -315,7 +258,7 @@ fn build_docker_image(dockerfile: &Path, build_context: Option<&Path>) -> Result
     let context_path = build_context
         .unwrap_or_else(|| dockerfile.parent().unwrap_or(Path::new(".")));
     
-    let image_name = format!("scarf-agent-{}", Uuid::new_v4().simple());
+    let image_name = format!("scarf-test-{}", Uuid::new_v4().simple());
     
     let mut docker_cmd = Command::new("docker");
     docker_cmd
@@ -358,32 +301,6 @@ fn parse_env_vars(env_vars: &[String]) -> Result<HashMap<String, String>> {
     }
     
     Ok(env_map)
-}
-
-fn cleanup_container(container_name: &str) -> Result<()> {
-    info(&format!("Cleaning up container: {}", container_name));
-    
-    let mut docker_cmd = Command::new("docker");
-    docker_cmd
-        .arg("rm")
-        .arg("-f")
-        .arg(container_name);
-    
-    let output = docker_cmd
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .output();
-    
-    match output {
-        Ok(_) => {
-            info(&format!("Container {} cleaned up successfully", container_name));
-            Ok(())
-        }
-        Err(_) => {
-            warning(&format!("Failed to clean up container: {}", container_name));
-            Ok(())
-        }
-    }
 }
 
 fn copy_directory_recursive(src: &Path, dst: &Path) -> Result<()> {

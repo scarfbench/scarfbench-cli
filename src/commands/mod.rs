@@ -1,2 +1,3 @@
-pub mod run;
 pub mod init;
+pub mod run;
+pub mod test;

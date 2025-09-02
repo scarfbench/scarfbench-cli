@@ -2,3 +2,5 @@
 .rustup/
 target/
 .DS_STORE
+agents
+containers

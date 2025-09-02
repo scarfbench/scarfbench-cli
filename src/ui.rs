@@ -1,10 +1,7 @@
 use comfy_table::{ presets::UTF8_FULL_CONDENSED, Table };
 use console::{ style, Emoji, Term };
-use indicatif::{ ProgressBar, ProgressStyle };
-use std::time::Duration;
 
 // Let's create some shortcuts for emojies
-pub const ROCKET: Emoji<'_, '_> = Emoji("🚀", "↗");
 pub const SCARF: Emoji<'_, '_> = Emoji("🧣", "");
 pub const CHECK: Emoji<'_, '_> = Emoji("✅", "✓");
 pub const CROSS: Emoji<'_, '_> = Emoji("❌", "x");
@@ -37,32 +34,7 @@ pub fn error(msg: &str) {
     println!("{} {}", CROSS, style(msg).red().bold());
 }
 
-/// Pretty progress bar that can be manually advance
-pub fn pbar(len: u64, message: &str) -> ProgressBar {
-    let pb: ProgressBar = ProgressBar::new(len);
-    pb.set_message(message.to_string());
-    let template: String =
-        "{spinner} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>3} {msg}".to_string();
-    let style: ProgressStyle = ProgressStyle::with_template(&template)
-        .unwrap()
-        .progress_chars("█▓░");
-    pb.set_style(style);
-    return pb;
-}
 
-/// Spin and carry computation in f()
-pub fn spin<F, T>(msg: &str, f: F) -> T where F: FnOnce() -> T {
-    let pb: ProgressBar = ProgressBar::new_spinner();
-    let style: ProgressStyle = ProgressStyle::with_template("{spinner} {msg}")
-        .unwrap()
-        .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ ");
-    pb.set_style(style);
-    pb.enable_steady_tick(Duration::from_millis(80));
-    pb.set_message(msg.to_string());
-    let res: T = f();
-    pb.finish_with_message("done");
-    return res;
-}
 
 /// Pretty Table
 pub fn table(headers: &[&str], rows: &[Vec<String>]) -> Table {

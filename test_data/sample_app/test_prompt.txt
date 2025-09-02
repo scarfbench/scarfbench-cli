@@ -1,0 +1,6 @@
+You are a helpful AI assistant. Please analyze the source code and provide a summary of what you find.
+
+Source code location: /source
+Output location: /output
+
+Please provide a brief analysis of the Java application structure.

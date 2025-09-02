@@ -15,3 +15,6 @@ comfy-table = "7"        # pretty tables
 inquire = "0.7"          # interactive prompts (select/confirm/input)
 console = "0.16.0"       # terminal features (width, emojis, styling helpers)
 clippy = "0.0.302"
+# Docker operations
+tokio = { version = "1.0", features = ["full"] }
+uuid = { version = "1.0", features = ["v4"] }
