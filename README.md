@@ -1,10 +1,10 @@
 # 🧣 Scarf CLI
 
-A powerful CLI tool for framework migration with Docker container support.
+A powerful benchmark CLI tool for framework migration with Docker container support.
 
 ## Overview
 
-SCARF is a command-line interface tool designed to facilitate agent-driven code transformation and framework migration. It provides utilities to initialize transformation stubs, test Docker container setups, and run agents for refactoring between different frameworks - all with full Docker containerization support.
+SCARF is a command-line interface tool designed to facilitate agent-driven code transformation and framework migration. It provides utilities to initialize transformation stubs, test Docker container setups, and run agents for refactoring between different frameworks—with full Docker containerization support.
 
 ## Features
 
@@ -15,29 +15,27 @@ SCARF is a command-line interface tool designed to facilitate agent-driven code 
 - **Flexible Configuration**: Support for custom Docker images, networks, and environment variables
 
 ## Installation
+To install SCARF globally, you can use Cargo, the Rust package manager. This will allow you to run `scarf` from anywhere in your terminal.
 
 ### Prerequisites
 
-- **Rust and Cargo**: Install from [rustup.rs](https://rustup.rs/)
-- **Docker**: Install Docker Desktop or Docker Engine
-
+Ensure you have Rust and Cargo installed. You can install them from [rustup.rs](https://rustup.rs/).
 ### Install SCARF
-
+Once you have Rust and Cargo set up, you can install SCARF globally using the following
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd scarf
-
-# Install globally
-cargo install --path .
+cargo install scarf
 ```
+
+### CARGO Wrapper
+
+I have included a `cargow` wrapper script to build this tool without installing cargo globally. This script is a simple wrapper around `cargo` that works on both Unix and Windows systems.
 
 ### Build from Source
 
 ```bash
 git clone <repository-url>
 cd scarf
-cargo build --release
+./cargow clean build --release
 ```
 
 The binary will be available at `target/release/scarf`.
@@ -246,5 +244,5 @@ This project is licensed under the terms specified in the `LICENSE` file.
 
 ---
 
-*Made with ❤️ for the developer community*
+*Made with ❤️ for the developer community from IBM Research*
 
