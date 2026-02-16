@@ -1,55 +1,30 @@
-mod ui;
-mod commands;
-
 use anyhow::Result;
-use clap::{ Parser, Subcommand };
-use owo_colors::OwoColorize;
-use ui::ROCKET;
+use clap::Parser;
 
-#[derive(Parser)]
-#[command(name = "scarf", version, about = "🧣 SCARF benchmark CLI")]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-/// At runtime, clap will match the first keyword after scarf [init|run] to the following variants
-#[derive(Subcommand)]
-enum Commands {
-    /// Create a destination stub (templates) for a target framework
-    Init {
-        #[arg(long)]
-        source_dir: std::path::PathBuf,
-        #[arg(long)]
-        target_framework: String,
-        #[arg(long, default_value = "generated")]
-        output_dir: std::path::PathBuf,
-    },
-    /// Run an agent to perform a transformation
-    Run {
-        #[arg(long)]
-        agent: std::path::PathBuf,
-        #[arg(long)]
-        from: std::path::PathBuf,
-        #[arg(long)]
-        to: String,
-        #[arg(long, default_value = "generated")]
-        out: std::path::PathBuf,
-        /// Extra args to pass to agent after `--`
-        #[arg(last = true)]
-        extra: Vec<String>,
-    },
-}
+mod bench;
+mod cli;
+mod eval;
+mod utils;
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = cli::Cli::parse();
+    init_logging(cli.verbose);
 
-    println!("{} {}", ROCKET, "Welcome to SCARF — sharper ports, faster!".bright_magenta().bold());
+    let code = match cli.command {
+        cli::Commands::Bench(cmd) => bench::run(cmd)?,
+        cli::Commands::Eval(cmd) => eval::run(cmd)?,
+    };
+    std::process::exit(code);
+}
 
-    match cli.command {
-        Commands::Init { source_dir, target_framework, output_dir } =>
-            commands::init::run_init(&source_dir, &target_framework, &output_dir),
-        Commands::Run { agent, from, to, out, extra } =>
-            commands::run::run_agent(&agent, &from, &to, &out, &extra),
-    }
+fn init_logging(verbose: u8) {
+    // Use `RUST_LOG` if set; otherwise default to `warn`, and let `-v/-vv/-vvv` raise verbosity.
+    let default_filter = match verbose {
+        0 => "warn",
+        1 => "info",
+        2 => "debug",
+        _ => "trace",
+    };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_filter))
+        .init();
 }

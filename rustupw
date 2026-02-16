@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Project-local rustup wrapper (like mvnw)
+set -euo pipefail
+
+# Resolve repo root (dir that contains this script), independent of $PWD
+SELF="${BASH_SOURCE[0]:-$0}"
+ROOT="$(cd "$(dirname "$SELF")" && pwd)"
+
+# Project-local "venv" dirs
+export CARGO_HOME="$ROOT/.cargo"
+export RUSTUP_HOME="$ROOT/.rustup"
+export PATH="$CARGO_HOME/bin:${PATH}"
+
+# Optional: keep build artifacts in-repo (matches .envrc suggestion)
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
+# Optional: cargo install defaults to local bin
+export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$CARGO_HOME}"
+
+# Ensure local rustup is present
+if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+  echo "[rustupw] missing local rustup at $CARGO_HOME/bin/rustup"
+  echo "[rustupw] run ./cargow --version to install local rustup/cargo first"
+  exit 1
+fi
+
+# Ensure rustup is initialized (creates ~/.cargo/env normally; here it's $CARGO_HOME/env)
+# Not strictly required since we set PATH, but harmless if present
+if [ -r "$CARGO_HOME/env" ]; then
+  # shellcheck disable=SC1090
+  . "$CARGO_HOME/env"
+fi
+
+# Hand off to *local* rustup, preserving args
+exec "$CARGO_HOME/bin/rustup" "$@"

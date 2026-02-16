@@ -1,3 +1,10 @@
 .cargo/
 .rustup/
 target/
+
+# Dependency lock file – keep it out of VCS for libraries,
+# or commit it for binaries/ applications if you prefer.
+Cargo.lock
+
+# Project binaries that we shouldn't commit
+scarf

@@ -1,139 +1,231 @@
-# 🧣 Scarf CLI
+# SCARF Commandline Interface
 
-A benchmark CLI tool for framework migration.
+This is a companion CLI tool for the [SCARF Benchmark](../benchmark). It provides a commandline interface to list and test benchmarks, run agents, submit solutions, view and explore leaderboard among other useful tasks.
 
-## Overview
+## Table of Contents
 
-SCARF is a command-line interface tool designed to facilitate benchmarking of agent-driven code transformation and framework migration. It provides utilities to initialize transformation stubs and run agents for refactoring between different frameworks.
+- [Features](#features)
+- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Build from Source](#build-from-source)
+- [Usage](#usage)
+- [Development](#development)
+  - [Development Dependencies](#development-dependencies)
+  - [Testing](#testing)
+  - [Building and Testing](#building-and-testing)
 
 ## Features
 
-- **Template Generation**: Create destination stubs with templates for target frameworks
-- **Agent Execution**: Run transformation agents with custom agent scripts (provided via `--agent-executable`)
-- **Flexible Configuration**: Support for custom output directories and extra arguments
+- List available benchmarks
+- Test and validate benchmarks
+- Run agents on benchmark problems
+- Submit solutions
+- View and explore leaderboards
+- Isolated benchmark execution using Docker
 
-## Installation (Global)
-To install SCARF globally, you can use Cargo, the Rust package manager. This will allow you to run `scarf` from anywhere in your terminal.
+## Installation
 
 ### Prerequisites
 
-Ensure you have Rust and Cargo installed. You can install them from [rustup.rs](https://rustup.rs/).
-### Install SCARF
-Once you have Rust and Cargo set up, you can install SCARF globally using the following
+Before installing the SCARF CLI, ensure you have the following tools installed:
+
+- **Rustup** ([Installation Guide](https://rustup.rs)) - Manages Rust toolchains including `cargo` and `llvm-tools`
+- **Docker** ([Installation Guide](https://docs.docker.com/get-docker/)) - Runs benchmarks in isolated environments
+- **Make** - Builds and runs projects as specified in makefiles
+- **Git** - Clones repositories
+- **Python** - If you want to install `scarf` with pip (optional)
+
+### Clone the repository
+
 ```bash
-cargo install scarf
+git clone https://github.com/scarfbench/scarf.git
+cd scarf
 ```
 
-### CARGO Wrapper
+### Install with `pip`
 
-I have included a `cargow` wrapper script to build this tool without installing cargo globally. This script is a simple wrapper around `cargo` that works on both Unix and Windows systems.
+You can install the SCARF CLI using `pip` for easier management:
 
+```bash
+pip install -U .
+```
+
+Note: Depending on your os, pip may be called `pip3`.
+
+### Install with `cargo`
+
+We have provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you are on windows), you can just install with 
+
+```bash
+./cargow install --path $PWD --root $HOME/.local [--force]
+```
+
+> Note: when you provide a --root folder, cargo will go ahead and create a bin folder within that directory and put the binary there. So make sure you have it in your path. For example, in the above, that path will be `$HOME/.local/bin`.
 ### Build from Source
 
-```bash
-git clone <repository-url>
-cd scarf
-./cargow clean build --release
-```
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/scarfbench/scarf.git
+   cd scarf
+   ```
 
-The binary will be available at `target/release/scarf`.
+2. **Build the project:**
+   ```bash
+   ./cargow build --release
+   ```
+   
+   The compiled binary will be located in `target/release/scarf`.
+
+3. **Run the CLI:**
+   ```bash
+   ./target/release/scarf --help
+   ```
+   
+   Optionally, add the binary to your system's PATH for easier access.
 
 ## Usage
 
-SCARF provides two main commands: `init` and `run`.
+After installation, you can use the SCARF CLI to interact with the SCARF Benchmark. Here are some common commands:
 
-### Initialize Transformation Stub
+### 1. List Benchmarks
+```bash
+❯ ./target/release/scarf bench list --help
+List the application(s) in the benchmark.
 
-Create a destination stub with templates for a target framework:
+Usage: scarf bench list [OPTIONS] --benchmark-dir <ROOT>
+
+Options:
+      --benchmark-dir <ROOT>    Path to the root of the scarf benchmark.
+  -v, --verbose...     Increase verbosity (-v, -vv, -vvv). If RUST_LOG is set, it takes precedence.
+      --layer <LAYER>  Application layer to list.
+  -h, --help           Print help
+```
+
+This should give you something like below
+```bash
+❯ ./target/release/scarf bench list --benchmark-dir /home/rkrsn/workspace/scarfbench/benchmark --layer business_domain
+┌─────────────────┬──────────────┬───────────┬─────────────────────────────────────────────────────────────────────────────────┐
+│ Layer           ┆ Application  ┆ Framework ┆ Path                                                                            │
+╞═════════════════╪══════════════╪═══════════╪═════════════════════════════════════════════════════════════════════════════════╡
+│ business_domain ┆ cart         ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/cart/jakarta         │
+│ business_domain ┆ cart         ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/cart/quarkus         │
+│ business_domain ┆ cart         ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/cart/spring          │
+│ business_domain ┆ converter    ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/converter/jakarta    │
+│ business_domain ┆ converter    ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/converter/quarkus    │
+│ business_domain ┆ converter    ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/converter/spring     │
+│ business_domain ┆ counter      ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/counter/jakarta      │
+│ business_domain ┆ counter      ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/counter/quarkus      │
+│ business_domain ┆ counter      ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/counter/spring       │
+│ business_domain ┆ helloservice ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/helloservice/jakarta │
+│ business_domain ┆ helloservice ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/helloservice/quarkus │
+│ business_domain ┆ helloservice ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/helloservice/spring  │
+│ business_domain ┆ standalone   ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/standalone/jakarta   │
+│ business_domain ┆ standalone   ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/standalone/quarkus   │
+│ business_domain ┆ standalone   ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/standalone/spring    │
+└─────────────────┴──────────────┴───────────┴─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 2. Test Benchmark Layer(s)
+
+You can use the `scarf bench test` command to test specific benchmark layers or the whole benchmark. Here are some examples:
 
 ```bash
-./target/release/scarf init --source-dir <SOURCE_DIR> --target-framework <FRAMEWORK> [--output-dir <OUTPUT_DIR>]
+❯ ./target/release/scarf bench test --help
+Run regression tests (with `make test`) on the benchmark application(s).
+
+Usage: scarf bench test [OPTIONS] --benchmark-dir <ROOT>
+
+Options:
+      --benchmark-dir <ROOT>    Path to the root of the scarf benchmark.
+  -v, --verbose...     Increase verbosity (-v, -vv, -vvv). If RUST_LOG is set, it takes precedence.
+      --layer <LAYER>  Application layer to test.
+      --dry-run        Use dry run instead of full run.
+  -h, --help           Print help
 ```
 
-**Arguments:**
-- `--source-dir`: Path to the source directory containing the original code
-- `--target-framework`: Target framework to migrate to
-- `--output-dir`: Output directory for generated templates (default: "generated")
+For example, to test the `persistence` layer:
 
-**Example:**
 ```bash
-./target/release/scarf init --source-dir ./my-app --target-framework react --output-dir ./output
+❯ ./target/release/scarf bench test --benchmark-dir /home/rkrsn/workspace/scarfbench/benchmark --layer persistence
 ```
 
-### Run Transformation Agent
+This will run `make tests` in all the apps in `persistence` layer and provide a summary of the results.
 
-Execute an agent to perform code transformation:
 ```bash
-./target/release/scarf run --agent <AGENT_PATH> --from <SOURCE_PATH> --to <TARGET_FRAMEWORK> [--out <OUTPUT_DIR>] [-- <EXTRA_ARGS>...]
+┌─────────────────────────────────────────────────────────────────────────────┬─────────┐
+│ Application Path                                                            ┆ Result  │
+╞═════════════════════════════════════════════════════════════════════════════╪═════════╡
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/order/jakarta        ┆ Failure │
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/roster/spring        ┆ Success │
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/order/quarkus        ┆ Failure │
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/roster/quarkus       ┆ Success │
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/roster/jakarta       ┆ Success │
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/address-book/spring  ┆ Success │
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/address-book/quarkus ┆ Success │
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/address-book/jakarta ┆ Success │
+│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/order/spring         ┆ Success │
+└─────────────────────────────────────────────────────────────────────────────┴─────────┘
 ```
 
-**Arguments:**
-- `--agent`: Path to the transformation agent
-- `--from`: Source path containing code to transform
-- `--to`: Target framework name
-- `--out`: Output directory (default: "generated")
-- `-- <EXTRA_ARGS>`: Additional arguments passed to the agent
-
-**Example:**
-```bash
-./target/release/scarf run --agent ./agents/react-to-vue --from ./src --to vue -- --typescript --strict
-```
-
-## Project Structure
-
-```
-scarf/
-├── Cargo.toml          # Project configuration and dependencies
-├── src/
-│   ├── main.rs         # Main CLI entry point
-│   ├── ui.rs           # Terminal UI utilities and styling
-│   └── commands/
-│       ├── mod.rs      # Command module exports
-│       ├── init.rs     # Initialize command implementation
-│       └── run.rs      # Run command implementation
-├── cargow              # Cargo wrapper (Unix)
-├── cargow.bat          # Cargo wrapper (Windows)
-└── README.md           # This file
-```
 
 ## Development
 
-### Running in Development
+### Development Dependencies
 
-```bash
-./cargow run -- init --source-dir ./example --target-framework react
-./cargow run -- run --agent ./agent --from ./src --to vue
-```
+Use `make setup` to install and verify tooling (`rustup`, `rustfmt`, `clippy`, `cargo-nextest`, `cargo-llvm-cov`). You can also install them manually:
 
-### Building
+1. **Clippy** - Linting and code quality checks
+   ```bash
+   ./rustupw component add clippy
+   ```
 
-```bash
-./cargow build
-```
+2. **Rustfmt** - Code formatting
+   ```bash
+   ./rustupw component add rustfmt
+   ```
+
+3. **LLVM Coverage Tools** - Coverage analysis
+   ```bash
+   ./rustupw component add llvm-tools-preview
+   ./cargow install cargo-llvm-cov
+   ```
+
+4. **Nextest** - Advanced test runner
+   ```bash
+   ./cargow install cargo-nextest --locked
+   ```
 
 ### Testing
 
+The project follows idiomatic Rust testing practices:
+
+- **Unit tests**: Located within each module under the `#[cfg(test)]` attribute
+- **Integration tests**: Place in `tests/` (not currently present) for CLI-level coverage. 
+  - For intergation tests, use descriptive names for test files, e.g., `cli_tests.rs`.
+
+### Building and Testing
+
+A [Makefile](Makefile) is provided to streamline development tasks. Run `make help` to see available commands. You can run `make help` to see all available targets:
+
+| Target     | Description                                                      |
+|------------|------------------------------------------------------------------|
+| `all`      | Run full pipeline (setup → fmt → clippy → build → test → coverage) |
+| `setup`    | Check/install rustup, cargo, components, nextest, llvm-cov       |
+| `fmt`      | Run `cargo fmt --all`                                            |
+| `clippy`   | Run `cargo clippy` with warnings denied                          |
+| `build`    | Run `cargo build`                                                |
+| `test`     | Run tests using `cargo nextest`                                  |
+| `coverage` | Run coverage using `cargo llvm-cov` + nextest                    |
+| `clean`    | Run `cargo clean`                                                |
+| `help`     | Show help message                                                |
+
+Run the full pipeline with:
 ```bash
-./cargow test
+make
 ```
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the terms specified in the `LICENSE` file.
-
-## Status
-
-⚠️ **Development Status**: This project is in active development. The `run` command is currently a stub and needs implementation.
-
----
-
-*Made with ❤️ for the developer community from IBM Research*
-
+To build a release binary:
+```bash
+./cargow build --release
+./target/release/scarf --help
+```
