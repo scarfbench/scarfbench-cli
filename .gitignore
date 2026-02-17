@@ -8,3 +8,4 @@ Cargo.lock
 
 # Project binaries that we shouldn't commit
 scarf
+.idea/
