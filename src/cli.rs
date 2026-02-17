@@ -31,10 +31,15 @@ pub struct Cli {
 pub enum Commands {
     #[command(
         subcommand,
-        about = "A series of subcommands to run on the benchmark applications."
+        before_help = logo(),
+        about = format!("{}", "A series of subcommands to run on the benchmark applications.".bold().bright_white())
     )]
     Bench(BenchCmd),
 
-    #[command(subcommand, about = "Subcommands to run evaluation over the benchmark")]
+    #[command(
+        subcommand,
+        before_help = logo(),
+        about = format!("{}", "Subcommands to run evaluation over the benchmark".bold().bright_white())
+    )]
     Eval(EvalCmd),
 }
