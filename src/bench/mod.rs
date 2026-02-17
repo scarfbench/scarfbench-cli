@@ -6,12 +6,16 @@ use clap::Subcommand;
 
 use crate::bench::list::BenchListArgs;
 use crate::bench::test::BenchTestArgs;
+use crate::utils::logo;
 
 #[derive(Subcommand, Debug)]
 pub enum BenchCmd {
-    #[command(about = "List the application(s) in the benchmark.")]
+    #[command(before_help = logo(), about = "List the application(s) in the benchmark.")]
     List(BenchListArgs),
-    #[command(about = "Run regression tests (with `make test`) on the benchmark application(s).")]
+    #[command(
+        before_help = logo(),
+        about = "Run regression tests (with `make test`) on the benchmark application(s)."
+    )]
     Test(BenchTestArgs),
 }
 

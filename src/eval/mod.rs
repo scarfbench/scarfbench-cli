@@ -4,12 +4,13 @@ mod types;
 
 pub(crate) mod run;
 
+use crate::utils::logo;
 use clap::Subcommand;
 use run::EvalRunArgs;
 
 #[derive(Subcommand, Debug)]
 pub enum EvalCmd {
-    #[command(about = "Evaluate an agent on Scarfbench")]
+    #[command(before_help = logo(), about = "Evaluate an agent on Scarfbench")]
     Run(EvalRunArgs),
 }
 
