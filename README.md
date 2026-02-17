@@ -79,6 +79,27 @@ We have provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you 
 3. **Run the CLI:**
    ```bash
    ./target/release/scarf --help
+
+ ███████╗ ██████╗ █████╗ ██████╗ ███████╗██████╗ ███████╗███╗   ██╗ ██████╗██╗  ██╗
+ ██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗██╔════╝████╗  ██║██╔════╝██║  ██║
+ ███████╗██║     ███████║██████╔╝█████╗  ██████╔╝█████╗  ██╔██╗ ██║██║     ███████║
+ ╚════██║██║     ██╔══██║██╔══██╗██╔══╝  ██╔══██╗██╔══╝  ██║╚██╗██║██║     ██╔══██║
+ ███████║╚██████╗██║  ██║██║  ██║██║     ██████╔╝███████╗██║ ╚████║╚██████╗██║  ██║
+ ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝╚═╝  ╚═╝
+
+ScarfBench CLI: The command line helper tool for scarf bench
+
+Usage: scarf [OPTIONS] <COMMAND>
+
+Commands:
+  bench  A series of subcommands to run on the benchmark applications.
+  eval   Subcommands to run evaluation over the benchmark
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...  Increase verbosity (-v, -vv, -vvv).
+  -h, --help        Print help
+  -V, --version     Print version
    ```
    
    Optionally, add the binary to your system's PATH for easier access.
