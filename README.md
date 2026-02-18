@@ -1,4 +1,10 @@
-# SCARF Commandline Interface
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://ibm.github.io/scarfbench/assets/images/scarf-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://ibm.github.io/scarfbench/assets/images/scarf-light.png">
+  <img alt="Logo">
+</picture>
+
+# ScarfBench Commandline Interface
 
 This is a companion CLI tool for the [SCARF Benchmark](../benchmark). It provides a commandline interface to list and test benchmarks, run agents, submit solutions, view and explore leaderboard among other useful tasks.
 
