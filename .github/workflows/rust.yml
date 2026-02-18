@@ -1,22 +1,67 @@
-name: Rust
+name: Rust Release
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  release:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build output
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Tests
+        id: test
+        continue-on-error: true
+        run: cargo test --locked --verbose
+
+      - name: Delete tag on failure
+        if: steps.test.conclusion == 'failure'
+        run: |
+          echo "Tests failed. Deleting tag ${GITHUB_REF#refs/tags/}..."
+          git push --delete origin ${GITHUB_REF#refs/tags/}
+          exit 1
+
+      - name: Build release binary
+        run: cargo build --release --locked --verbose
+
+      - name: Package release artifact
+        run: |
+          mkdir -p dist
+          BIN_NAME="scarf"
+          ARTIFACT_NAME="${BIN_NAME}-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu"
+          cp "target/release/${BIN_NAME}" "dist/${ARTIFACT_NAME}"
+          tar -C dist -czf "dist/${ARTIFACT_NAME}.tar.gz" "${ARTIFACT_NAME}"
+          rm "dist/${ARTIFACT_NAME}"
+
+      - name: Build Changelog
+        id: gen_changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          failOnError: "true"
+          configuration: .github/workflows/release_config.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Release on GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body: ${{ steps.gen_changelog.outputs.changelog }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

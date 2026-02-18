@@ -1,0 +1,65 @@
+{
+  "categories": [
+    {
+      "title": "## ✨ Release",
+      "labels": [
+        "release"
+      ]
+    },
+    {
+      "title": "## 🚀 Features",
+      "labels": [
+        "kind/feature",
+        "enhancement"
+      ]
+    },
+    {
+      "title": "## 🐛 Fixes",
+      "labels": [
+        "fix",
+        "bug"
+      ]
+    },
+    {
+      "title": "## ♻️ Refactoring",
+      "labels": [
+        "refactoring"
+      ]
+    },
+    {
+      "title": "## ⚡️ Performance Improvements",
+      "labels": [
+        "performance"
+      ]
+    },
+    {
+      "title": "## 📚 Documentation",
+      "labels": [
+        "documentation",
+        "doc"
+      ]
+    },
+    {
+      "title": "## 🚦 Tests",
+      "labels": [
+        "test"
+      ]
+    },
+    {
+      "title": "## 🛠 Other Updates",
+      "labels": [
+        "other",
+        "kind/dependency-change"
+      ]
+    },
+    {
+      "title": "## 🚨 Breaking Changes",
+      "labels": [
+        "breaking"
+      ]
+    }
+  ],
+  "ignore_labels": [
+    "ignore"
+  ]
+}
