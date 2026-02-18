@@ -28,6 +28,8 @@ jobs:
       - name: Run Tests
         id: test
         continue-on-error: true
+        env:
+          SCARF_BENCH_GITHUB_TOKEN: ${{ secrets.SCARF_BENCH_GITHUB_TOKEN }}
         run: cargo test --locked --verbose
 
       - name: Delete tag on failure

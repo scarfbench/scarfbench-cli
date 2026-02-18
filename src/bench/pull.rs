@@ -4,7 +4,7 @@ use bon::Builder;
 use clap::Args;
 use flate2::bufread::GzDecoder;
 use kdam::{Column, RichProgress, Spinner, term, tqdm};
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self},
@@ -50,8 +50,28 @@ pub struct PullScarfBench {
 }
 
 impl PullScarfBench {
+    fn github_token() -> Option<String> {
+        std::env::var("SCARF_BENCH_GITHUB_TOKEN")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .or_else(|| {
+                std::env::var("GITHUB_TOKEN")
+                    .ok()
+                    .filter(|v| !v.trim().is_empty())
+            })
+    }
+
+    fn maybe_auth(request: RequestBuilder, token: Option<&str>) -> RequestBuilder {
+        match token {
+            Some(token) => request.bearer_auth(token),
+            None => request,
+        }
+    }
+
     pub fn exec(&self) -> anyhow::Result<i32> {
+        let token = Self::github_token();
         let client = Client::builder().user_agent("scarf-cli").build()?;
+
         // Get the download URL
         let api_url = match self.version.as_deref() {
             Some(v) => format!(
@@ -63,13 +83,18 @@ impl PullScarfBench {
         log::info!("Downloading from {api_url}");
 
         // Get releases
-        let releases: Release = client
-            .get(&api_url)
+        let release_response = Self::maybe_auth(client.get(&api_url), token.as_deref())
             .header("User-Agent", "scarf")
             .send()
             .with_context(|| format!("Unable to fetch the release metadata from {api_url}"))?
             .error_for_status()
-            .context("Github API returned an error status")?
+            .with_context(|| {
+                format!(
+                    "GitHub API returned an error status while reading {api_url}. If this repo is private, set SCARF_BENCH_GITHUB_TOKEN (or GITHUB_TOKEN) with contents:read access to scarfbench/benchmark."
+                )
+            })?;
+
+        let releases: Release = release_response
             .json()
             .context("Failed to parse release JSON")?;
 
@@ -93,8 +118,7 @@ impl PullScarfBench {
             );
         })?;
 
-        let response = client
-            .get(&asset.browser_download_url)
+        let response = Self::maybe_auth(client.get(&asset.browser_download_url), token.as_deref())
             .send()
             .with_context(|| {
                 return format!(
@@ -103,7 +127,12 @@ impl PullScarfBench {
                 );
             })?
             .error_for_status()
-            .context("Asset download returned an error status")?;
+            .with_context(|| {
+                format!(
+                    "Asset download returned an error status from {}. If this release is private, set SCARF_BENCH_GITHUB_TOKEN (or GITHUB_TOKEN) with access to scarfbench/benchmark.",
+                    asset.browser_download_url
+                )
+            })?;
 
         // Get the total size of the payload (our benchmark tar.gz we are downloading)
         let total_size = response.content_length().map(|s| s as usize).unwrap_or(0);
