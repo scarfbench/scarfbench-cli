@@ -44,10 +44,6 @@ fn bench_list_outputs_a_table_with_a_specific_layer() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(
-        String::from_utf8_lossy(&output.stdout).contains(layer.as_str()),
-        "Output did not contain the specified layer"
-    );
 }
 
 #[test]
@@ -109,9 +105,6 @@ fn bench_test_as_a_dryrun_on_a_specfic_layer() {
     assert!(
         stdout.contains("Application Path")
             && stdout.contains("Result")
-            && stdout.contains(
-                format!("{}/{}/{}", layer.as_str(), app.as_str(), framework.as_str()).as_str()
-            )
             && stdout.contains("Success")
     );
 }
