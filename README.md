@@ -19,9 +19,8 @@ This is a companion CLI tool for the [SCARF Benchmark](../benchmark). It provide
 - List available benchmarks
 - Test and validate benchmarks
 - Run agents on benchmark problems
-- Submit solutions
-- View and explore leaderboards
-- Isolated benchmark execution using Docker
+- Submit solutions (to be added)
+- View and explore leaderboards (to be added)
 
 ## Installation
 
@@ -29,10 +28,8 @@ This is a companion CLI tool for the [SCARF Benchmark](../benchmark). It provide
 
 Before installing the SCARF CLI, ensure you have the following tools installed:
 
-- **Rustup** ([Installation Guide](https://rustup.rs)) - Manages Rust toolchains including `cargo` and `llvm-tools`
 - **Docker** ([Installation Guide](https://docs.docker.com/get-docker/)) - Runs benchmarks in isolated environments
 - **Make** - Builds and runs projects as specified in makefiles
-- **Git** - Clones repositories
 - **Python** - If you want to install `scarf` with pip (optional)
 
 ### Clone the repository
@@ -61,6 +58,7 @@ We have provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you 
 ```
 
 > Note: when you provide a --root folder, cargo will go ahead and create a bin folder within that directory and put the binary there. So make sure you have it in your path. For example, in the above, that path will be `$HOME/.local/bin`.
+
 ### Build from Source
 
 1. **Clone the repository:**
@@ -80,22 +78,22 @@ We have provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you 
    ```bash
    ./target/release/scarf --help
 
-ScarfBench CLI: The command line helper tool for scarf bench
-
-Usage: scarf [OPTIONS] <COMMAND>
-
-Commands:
-  bench  A series of subcommands to run on the benchmark applications.
-  eval   Subcommands to run evaluation over the benchmark
-  help   Print this message or the help of the given subcommand(s)
-
-Options:
-  -v, --verbose...  Increase verbosity (-v, -vv, -vvv).
-  -h, --help        Print help
-  -V, --version     Print version
+    ScarfBench CLI: The command line helper tool for scarf bench
+    
+    Usage: scarf [OPTIONS] <COMMAND>
+    
+    Commands:
+    bench  A series of subcommands to run on the benchmark applications.
+    eval   Subcommands to run evaluation over the benchmark
+    help   Print this message or the help of the given subcommand(s)
+    
+    Options:
+    -v, --verbose...  Increase verbosity (-v, -vv, -vvv).
+    -h, --help        Print help
+    -V, --version     Print version
    ```
    
-   Optionally, add the binary to your system's PATH for easier access.
+Optionally, add the binary to your system's PATH for easier access.
 
 ## Usage
 
