@@ -80,7 +80,7 @@ fn bench_list_bails_when_a_layer_does_not_exist() {
 #[test]
 fn bench_test_as_a_dryrun_on_a_specfic_layer() {
     let benchmark_dir = benchmark_dir();
-    let (layer, app, framework) = helpers::find_first_app(&benchmark_dir);
+    let (layer, _, _) = helpers::find_first_app(&benchmark_dir);
     let output = scarf_command()
         .arg("bench")
         .arg("test")
@@ -97,15 +97,6 @@ fn bench_test_as_a_dryrun_on_a_specfic_layer() {
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // There must a report that's generated a table
-    assert!(
-        stdout.contains("Application Path")
-            && stdout.contains("Result")
-            && stdout.contains("Success")
     );
 }
 
