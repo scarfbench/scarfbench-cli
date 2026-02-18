@@ -69,6 +69,15 @@ pub fn benchmark_dir() -> PathBuf {
     benchmark_dir
 }
 
+/// A temporary directory to save the bechmark
+pub fn bench_pull_save_dest() -> PathBuf {
+    tempfile::tempdir()
+        .expect("Failed to create temp dir for saving the pulled benchmark")
+        .path()
+        .join("bench_pull_save_dest")
+        .to_path_buf()
+}
+
 /// A helper to get a random (I am going with first) application in the benchmark
 #[allow(unused)]
 pub fn find_first_app(bench_dir: &PathBuf) -> (String, String, String) {

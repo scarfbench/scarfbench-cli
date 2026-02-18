@@ -1,4 +1,4 @@
-use crate::helpers::{benchmark_dir, scarf_command};
+use crate::helpers::{bench_pull_save_dest, benchmark_dir, scarf_command};
 mod helpers;
 
 /*
@@ -141,4 +141,25 @@ fn bench_test_on_an_absent_layer() {
         String::from_utf8_lossy(&output.stderr).contains("this_layer_does_not_exist"),
         "Error message did not include the non-existent layer name"
     );
+}
+
+/* +----------------------------------------------------------------+
+ * |               Bench Pull Command                               |
+ * +----------------------------------------------------------------+ */
+#[test]
+fn bench_pull_gets_the_latest_version() -> anyhow::Result<()> {
+    scarf_command()
+        .arg("bench")
+        .arg("pull")
+        .arg("--dest")
+        .arg(bench_pull_save_dest().to_str().unwrap())
+        .output()
+        .inspect(|o| {
+            assert!(
+                o.status.success(),
+                "stderr: {}",
+                String::from_utf8_lossy(&o.stderr)
+            )
+        })?;
+    Ok(())
 }
