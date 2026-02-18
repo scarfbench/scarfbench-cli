@@ -62,7 +62,8 @@ pub fn scarf_command() -> Command {
 #[allow(unused)]
 pub fn benchmark_dir() -> PathBuf {
     let benchmark_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
+        .join("tests")
+        .join("fixtures")
         .join("benchmark")
         .canonicalize()
         .expect("Failed to canonicalize benchmark dir");
@@ -70,6 +71,7 @@ pub fn benchmark_dir() -> PathBuf {
 }
 
 /// A temporary directory to save the bechmark
+#[allow(unused)]
 pub fn bench_pull_save_dest() -> PathBuf {
     tempfile::tempdir()
         .expect("Failed to create temp dir for saving the pulled benchmark")

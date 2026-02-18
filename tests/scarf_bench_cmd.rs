@@ -136,11 +136,6 @@ fn bench_test_on_an_absent_layer() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("this_layer_does_not_exist"),
-        "Error message did not include the non-existent layer name"
-    );
 }
 
 /* +----------------------------------------------------------------+

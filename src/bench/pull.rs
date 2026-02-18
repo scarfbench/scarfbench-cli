@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use bon::Builder;
 use clap::Args;
 use flate2::bufread::GzDecoder;
-use kdam::{BarExt, Column, RichProgress, Spinner, term, term::Colorizer, tqdm};
+use kdam::{Column, RichProgress, Spinner, term, tqdm};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -113,7 +113,7 @@ impl PullScarfBench {
         term::hide_cursor()?;
 
         // initialize our progress bar
-        let mut pb = RichProgress::new(
+        let pb = RichProgress::new(
             tqdm!(
                 total = total_size as usize,
                 unit_scale = true,
