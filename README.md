@@ -1,6 +1,10 @@
-<img width="841" height="180" alt="Screenshot 2026-02-18 at 6 11 47 PM" src="https://github.com/user-attachments/assets/b12db39f-9faa-49ab-ac96-e8484a7b22b4" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://private-user-images.githubusercontent.com/1433964/551821625-5f3586f2-8662-4726-8106-da553c085f03.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzE0NTcyMTUsIm5iZiI6MTc3MTQ1NjkxNSwicGF0aCI6Ii8xNDMzOTY0LzU1MTgyMTYyNS01ZjM1ODZmMi04NjYyLTQ3MjYtODEwNi1kYTU1M2MwODVmMDMucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDIxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjAyMThUMjMyMTU1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9OGE4NjZjNTNmNmEzZmIyNzg2ZjAwNmZlNGYzZGE1NDMyZGMzZThkMjUyN2Q1NTBmMzM5NmE0YmYxZTI5MjA4YiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.ZuvfZg5E5ToMVXzatLajNtK374ZcQJzFNnmLBE8koYY">
+  <source media="(prefers-color-scheme: light)" srcset="https://private-user-images.githubusercontent.com/1433964/551821625-5f3586f2-8662-4726-8106-da553c085f03.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzE0NTcyMTUsIm5iZiI6MTc3MTQ1NjkxNSwicGF0aCI6Ii8xNDMzOTY0LzU1MTgyMTYyNS01ZjM1ODZmMi04NjYyLTQ3MjYtODEwNi1kYTU1M2MwODVmMDMucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDIxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjAyMThUMjMyMTU1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9OGE4NjZjNTNmNmEzZmIyNzg2ZjAwNmZlNGYzZGE1NDMyZGMzZThkMjUyN2Q1NTBmMzM5NmE0YmYxZTI5MjA4YiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.ZuvfZg5E5ToMVXzatLajNtK374ZcQJzFNnmLBE8koYY">
+  <img alt="Logo">
+</picture>
 
-This is a companion CLI tool for the [SCARF Benchmark](../benchmark). It provides a commandline interface to list and test benchmarks, run agents, submit solutions, view and explore leaderboard among other useful tasks.
+This is a companion CLI tool for the [SCARF Benchmark](https://github.com/scarfbench/benchmark). It provides a commandline interface to list and test benchmarks, run agents, submit solutions, view and explore leaderboard among other useful tasks.
 
 ## Table of Contents
 
