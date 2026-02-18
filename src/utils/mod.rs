@@ -1,37 +1,58 @@
+use std::io::{self, BufRead, Read};
+
+use kdam::{BarExt, RichProgress};
 use owo_colors::OwoColorize;
-use serde::Serialize;
-use syntect::util::LinesWithEndings;
-/// Pretty print and colorize json output
-/// # Arguments
-/// * `value` - A reference to a serializable value
-/// # Returns
-/// A `String` containing the pretty-printed and colorized JSON representation of the input value
-#[allow(unused)]
-pub fn json_pretty<T: Serialize>(value: &T) -> String {
-    let pretty = serde_json::to_string_pretty(value);
+use std::io::{Error, ErrorKind, Result};
 
-    // Get the theme set and the syntax set
-    match syntect::parsing::SyntaxSet::load_defaults_newlines().find_syntax_by_extension("json") {
-        Some(syntax) => {
-            let theme =
-                &syntect::highlighting::ThemeSet::load_defaults().themes["Solarized (dark)"];
-            let mut h = syntect::easy::HighlightLines::new(syntax, theme);
-            let mut highlighted = String::new();
-
-            let ps = syntect::parsing::SyntaxSet::load_defaults_newlines();
-
-            for line in LinesWithEndings::from(&pretty.unwrap()) {
-                let ranges: Vec<(syntect::highlighting::Style, &str)> =
-                    h.highlight_line(line, &ps).unwrap();
-                let escaped = syntect::util::as_24_bit_terminal_escaped(&ranges[..], false);
-                highlighted.push_str(&escaped);
-            }
-            highlighted
-        }
-        None => pretty.unwrap(),
+pub struct ProgressReader<R: Read> {
+    /// Anything that has a read() method—a file, a network stream, anything...
+    inner: R,
+    /// kdam's progress bar
+    pb: RichProgress,
+    /// Total Size
+    total: Option<usize>,
+}
+impl<R: Read> ProgressReader<R> {
+    pub fn new(inner: R, pb: RichProgress, total: Option<usize>) -> Self {
+        Self { inner, pb, total }
     }
 }
+impl<R: Read> Read for ProgressReader<R> {
+    /// When someone calls this wrapper's read, do the following:
+    /// 1. Forward that to the inner reader
+    /// 2. Send the count of bytes read to the progress bar from kdam
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        let bytes_read = self.inner.read(buf)?;
+        if bytes_read > 0 {
+            self.pb
+                .update(bytes_read)
+                .map_err(|e| Error::new(ErrorKind::Other, e))?;
+        }
+        Result::Ok(bytes_read)
+    }
+}
+impl<R: BufRead> BufRead for ProgressReader<R> {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        self.inner.fill_buf()
+    }
 
+    fn consume(&mut self, amt: usize) {
+        // Important: count bytes that are consumed from the buffer as "read"
+        if amt > 0 {
+            // `kdam` update returns a Result, but BufRead::consume can't.
+            // Best effort: ignore error or store it somewhere.
+            let _ = self.pb.update(amt);
+        }
+        self.inner.consume(amt);
+    }
+}
+impl<R: Read> Drop for ProgressReader<R> {
+    fn drop(&mut self) {
+        if let Some(total) = self.total {
+            let _ = self.pb.update_to(total);
+        }
+    }
+}
 pub(crate) fn logo() -> String {
     format!(
         "\x1b[1m\x1b[31m{}\x1b[0m",
@@ -45,25 +66,4 @@ pub(crate) fn logo() -> String {
             .bold()
             .red()
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    #[test]
-    fn test_json_pretty() {
-        let data = json!({
-            "name": "TestApp",
-            "version": "1.0",
-            "features": ["feature1", "feature2", "feature3"]
-        });
-
-        let pretty_output = json_pretty(&data);
-        println!("{}", pretty_output);
-        let plain = String::from_utf8(strip_ansi_escapes::strip(pretty_output)).unwrap();
-        assert!(plain.contains("\"name\": \"TestApp\""));
-        assert!(plain.contains("\"version\": \"1.0\""));
-        assert!(plain.contains("\"features\": ["));
-    }
 }

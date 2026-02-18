@@ -1,9 +1,11 @@
 use assert_cmd::cargo;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::OnceLock;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
+static BENCHMARK_DIR: OnceLock<PathBuf> = OnceLock::new();
 /// Create a Environment that can be shared containing test fixtures
 #[allow(unused)]
 pub struct TestEnv {
@@ -60,13 +62,50 @@ pub fn scarf_command() -> Command {
 /// |  This is expected to change when we have scarf bench pull [--version] command in the future. |
 /// +----------------------------------------------------------------------------------------------+
 #[allow(unused)]
-pub fn benchmark_dir() -> PathBuf {
-    let benchmark_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("benchmark")
-        .canonicalize()
-        .expect("Failed to canonicalize benchmark dir");
-    benchmark_dir
+pub fn benchmark_dir() -> &'static PathBuf {
+    BENCHMARK_DIR.get_or_init(|| {
+        // I am using target/test-data to store the benchmark
+        let dir = std::env::temp_dir()
+            .join("scarfbench-tests-benchmark")
+            .join("benchmark");
+
+        // Run `scarf bench pull` only if the directory is absent
+
+        if !(dir.exists()
+            && dir
+                .read_dir()
+                .ok()
+                .map(|mut it| it.next().is_some())
+                .unwrap_or(false))
+        {
+            let output = scarf_command()
+                .arg("bench")
+                .arg("pull")
+                .arg("--dest")
+                .arg(dir.to_str().unwrap())
+                .output()
+                .expect("Run scarf bench pull --dest ...");
+
+            assert!(
+                output.status.success(),
+                "bench pull failed.\nstderr: {}\nstdout: {}",
+                String::from_utf8_lossy(&output.stderr),
+                String::from_utf8_lossy(&output.stdout),
+            );
+        }
+
+        dir
+    })
+}
+
+/// A temporary directory to save the bechmark
+#[allow(unused)]
+pub fn bench_pull_save_dest() -> PathBuf {
+    tempfile::tempdir()
+        .expect("Failed to create temp dir for saving the pulled benchmark")
+        .path()
+        .join("bench_pull_save_dest")
+        .to_path_buf()
 }
 
 /// A helper to get a random (I am going with first) application in the benchmark
