@@ -31,7 +31,7 @@ jobs:
         continue-on-error: true
         env:
           SCARF_BENCH_GITHUB_TOKEN: ${{ secrets.SCARF_BENCH_GITHUB_TOKEN }}
-        run: cargo test --locked --verbose
+        run: cargo test --verbose
 
       - name: Delete tag on failure
         if: steps.test.conclusion == 'failure'
@@ -41,7 +41,7 @@ jobs:
           exit 1
 
       - name: Build release binary
-        run: cargo build --release --locked --verbose
+        run: cargo build --release --verbose
 
       - name: Package release artifact
         run: |

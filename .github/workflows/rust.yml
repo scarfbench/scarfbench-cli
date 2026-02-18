@@ -22,4 +22,4 @@ jobs:
         continue-on-error: true
         env:
           SCARF_BENCH_GITHUB_TOKEN: ${{ secrets.SCARF_BENCH_GITHUB_TOKEN }}
-        run: cargo test --locked --verbose
+        run: cargo test --verbose
