@@ -9,9 +9,10 @@ This is a companion CLI tool for the [SCARF Benchmark](https://github.com/scarfb
 - [Features](#features)
 - [Installation](#installation)
   - [Prerequisites](#prerequisites)
-  - [Install with Homebrew](#install-with-homebrew)
-  - [Install with npm](#install-with-cargo)
-  - [Install with npm](#install-with-npm)
+  - [Install with shell script](#install-prebuilt-binaries-via-shell-script)
+  - [Install with Homebrew](#install-prebuilt-binaries-via-homebrew)
+  - [Install with cargo](#install-prebuilt-binaries-via-cargo)
+  - [Install with npm](#install-prebuilt-binaries-via-npm)
   - [Build from Source](#build-from-source)
 - [Usage](#usage)
 
@@ -33,28 +34,28 @@ Before installing the SCARF CLI, ensure you have the following tools installed:
 - **Make** - Builds and runs projects as specified in makefiles
 - **Python** - If you want to install `scarf` with pip (optional)
 
-### Install with Homebrew
+### Install prebuilt binaries via shell script
 
-The cli is available as a homebrew tap. You can install it as follows—
-
-```bash 
-brew tap scarfbench/scarf
-brew install scarfbench-cli
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/scarfbench/scarf/releases/download/v0.1.0/scarfbench-cli-installer.sh | sh
 ```
 
-### Install with Cargo
+### Install prebuilt binaries via Homebrew
 
-We have also provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you are on windows), so, if you have cargo, you can just install with—
+```sh
+brew install scarfbench/tap/scarf
+```
 
-```bash
+### Install prebuilt binaries via cargo
+
+```sh
 cargo install scarfbench-cli
 ```
 
-### Install with NPM
+### Install prebuilt binaries into your npm project
 
-This package is also available via npm. You may install it with
-```bash
-    npm install @scarfbench/scarfbench-cli
+```sh
+npm install @scarfbench/scarfbench-cli
 ```
 
 ### Build from Source
