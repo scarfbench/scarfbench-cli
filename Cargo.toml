@@ -1,6 +1,6 @@
 [package]
 name            = "scarfbench-cli"
-version         = "0.1.0"
+version         = "0.1.1"
 edition         = "2024"
 authors         = ["Rahul Krishna <i.m.ralk@gmail.com>"]
 license         = "Apache-2.0"
@@ -35,7 +35,6 @@ path = "src/main.rs"
 [dependencies]
 bon                 = "3.9.0"
 env_logger          = "0.11"
-syntect             = "5.3.0"
 walkdir             = "2.5.0"
 comfy-table         = "7.2.2"
 owo-colors          = "4.2.3"
