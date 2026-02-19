@@ -18,7 +18,7 @@ npm-scope = "@scarfbench"
 # The npm package should have this name
 npm-package = "scarfbench-cli"
 # Path that installers should place binaries in
-install-path = "CARGO_HOME"
+install-path = "$HOME/.local/bin"
 # Publish jobs to run in CI
 publish-jobs = ["homebrew", "npm"]
 # Whether to install an updater program
