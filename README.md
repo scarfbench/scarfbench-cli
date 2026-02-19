@@ -43,7 +43,8 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/scarfbench/scarf/releas
 ### Install prebuilt binaries via Homebrew
 
 ```sh
-brew install scarfbench/tap/scarfbench-cli
+brew tap scarfbench/tap
+brew install scarfbench-cli
 ```
 
 ### Install prebuilt binaries via cargo
