@@ -37,7 +37,7 @@ Before installing the SCARF CLI, ensure you have the following tools installed:
 ### Install prebuilt binaries via shell script
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/scarfbench/scarf/releases/download/v0.1.0/scarfbench-cli-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/scarfbench/scarf/releases/latest/download/scarfbench-cli-installer.sh | sh
 ```
 
 ### Install prebuilt binaries via Homebrew
