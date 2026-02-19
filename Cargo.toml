@@ -13,6 +13,7 @@ categories = ["command-line-utilities", "development-tools::testing"]
 include = [
   "Cargo.toml",
   "src/**",
+  "tests/**",
   "README.md",
   "LICENSE*",
 ]
