@@ -1,8 +1,11 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://private-user-images.githubusercontent.com/1433964/551822927-b10bec0e-d196-4ebe-97ce-2fb9c720b8d3.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzE0NTc0NzksIm5iZiI6MTc3MTQ1NzE3OSwicGF0aCI6Ii8xNDMzOTY0LzU1MTgyMjkyNy1iMTBiZWMwZS1kMTk2LTRlYmUtOTdjZS0yZmI5YzcyMGI4ZDMucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDIxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjAyMThUMjMyNjE5WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YWQxOWVlY2NlYjI5Mjg4NDFmMzIyYzBmMTYyNzBlZWZhYzVmODk2ZDRlZmM0ODE1M2MzMTBmNWIyYjlmMDgyYyZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.arY04-hBiWJRfUcweZTgpYdox9mR4y-6qxxu1bKy6SQ">
-  <source media="(prefers-color-scheme: light)" srcset="https://private-user-images.githubusercontent.com/1433964/551822940-e123170a-ef87-4330-964d-ba4d63e1e032.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzE0NTc0NzksIm5iZiI6MTc3MTQ1NzE3OSwicGF0aCI6Ii8xNDMzOTY0LzU1MTgyMjk0MC1lMTIzMTcwYS1lZjg3LTQzMzAtOTY0ZC1iYTRkNjNlMWUwMzIucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDIxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjAyMThUMjMyNjE5WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9ZmY3MDE4MjI2NGQ2MjI5YzJlOTQwNmRhNDRhZGFkNmJiM2U0Y2RkMzBmZTE1ZWRjY2FkZWUzYjE5MmVjZTA1MCZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.E8fiF79Rgi8B2rdpM6fMFMCABCclMH5E7jgeNsSeUWQ">
-  <img alt="Logo">
-</picture>
+```
+███████  ██████  █████  ██████  ███████ ██████  ███████ ███    ██  ██████ ██   ██ 
+██      ██      ██   ██ ██   ██ ██      ██   ██ ██      ████   ██ ██      ██   ██ 
+███████ ██      ███████ ██████  █████   ██████  █████   ██ ██  ██ ██      ███████ 
+     ██ ██      ██   ██ ██   ██ ██      ██   ██ ██      ██  ██ ██ ██      ██   ██ 
+███████  ██████ ██   ██ ██   ██ ██      ██████  ███████ ██   ████  ██████ ██   ██ 
+```
+**`ScarfBench CLI: The command line helper tool for scarf bench`**
 
 This is a companion CLI tool for the [SCARF Benchmark](https://github.com/scarfbench/benchmark). It provides a commandline interface to list and test benchmarks, run agents, submit solutions, view and explore leaderboard among other useful tasks.
 
