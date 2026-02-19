@@ -1,4 +1,5 @@
-![scarfbench](https://github.com/user-attachments/assets/8da2583b-ee67-4313-b451-1be0bf63e565)
+![scarfbench-raised](https://github.com/user-attachments/assets/b36885c0-2843-4c23-8550-01115537666d)
+
 
 ScarfBench CLI: The command line helper tool for scarf bench
 
