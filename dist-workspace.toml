@@ -23,7 +23,7 @@ install-path = "CARGO_HOME"
 publish-jobs = ["homebrew", "npm"]
 # Whether to install an updater program
 install-updater = true
-# Customize the Homebrew formula name
-formula = "scarfbench-cli"
 # Whether to publish prereleases to package managers
 publish-prereleases = true
+# Customize the Homebrew formula name
+formula = "scarfbench-cli"
