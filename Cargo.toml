@@ -1,6 +1,6 @@
 [package]
 name            = "scarfbench-cli"
-version         = "0.1.0-rc.1"
+version         = "0.1.0"
 edition         = "2024"
 authors         = ["Rahul Krishna <i.m.ralk@gmail.com>"]
 license         = "Apache-2.0"
@@ -18,6 +18,15 @@ include = [
   "README.md",
   "LICENSE*",
 ]
+
+[package.metadata.wix]
+upgrade-guid = "A803AB62-0AD5-4E0B-90A3-300CCB70C6C8"
+path-guid = "ED1637ED-B22A-4955-AC24-AD2419D784B9"
+license = false
+eula = false
+
+[package.metadata.dist]
+formula = "scarf"
 
 [[bin]]
 name = "scarf"
@@ -47,3 +56,8 @@ kdam = { version = "0.6.4", features = ["derive", "rich", "spinner"] }
 [dev-dependencies]
 tempfile   = "3.24.0"
 assert_cmd = "2.1.2"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

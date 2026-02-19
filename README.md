@@ -1,6 +1,5 @@
 ![scarfbench-raised](https://github.com/user-attachments/assets/b36885c0-2843-4c23-8550-01115537666d)
 
-
 ScarfBench CLI: The command line helper tool for scarf bench
 
 This is a companion CLI tool for the [SCARF Benchmark](https://github.com/scarfbench/benchmark). It provides a commandline interface to list and test benchmarks, run agents, submit solutions, view and explore leaderboard among other useful tasks.
@@ -10,12 +9,11 @@ This is a companion CLI tool for the [SCARF Benchmark](https://github.com/scarfb
 - [Features](#features)
 - [Installation](#installation)
   - [Prerequisites](#prerequisites)
+  - [Install with Homebrew](#install-with-homebrew)
+  - [Install with npm](#install-with-cargo)
+  - [Install with npm](#install-with-npm)
   - [Build from Source](#build-from-source)
 - [Usage](#usage)
-- [Development](#development)
-  - [Development Dependencies](#development-dependencies)
-  - [Testing](#testing)
-  - [Building and Testing](#building-and-testing)
 
 ## Features
 
@@ -35,32 +33,29 @@ Before installing the SCARF CLI, ensure you have the following tools installed:
 - **Make** - Builds and runs projects as specified in makefiles
 - **Python** - If you want to install `scarf` with pip (optional)
 
-### Clone the repository
+### Install with Homebrew
 
-```bash
-git clone https://github.com/scarfbench/scarf.git
-cd scarf
+The cli is available as a homebrew tap. You can install it as follows—
+
+```bash 
+brew tap scarfbench/scarf
+brew install scarfbench-cli
 ```
 
-### Install with `pip`
+### Install with Cargo
 
-You can install the SCARF CLI using `pip` for easier management:
-
-```bash
-pip install -U .
-```
-
-Note: Depending on your os, pip may be called `pip3`.
-
-### Install with `cargo`
-
-We have provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you are on windows), you can just install with 
+We have also provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you are on windows), so, if you have cargo, you can just install with—
 
 ```bash
-./cargow install --path $PWD --root $HOME/.local [--force]
+cargo install scarfbench-cli
 ```
 
-> Note: when you provide a --root folder, cargo will go ahead and create a bin folder within that directory and put the binary there. So make sure you have it in your path. For example, in the above, that path will be `$HOME/.local/bin`.
+### Install with NPM
+
+This package is also available via npm. You may install it with
+```bash
+    npm install @scarfbench/scarfbench-cli
+```
 
 ### Build from Source
 
@@ -70,16 +65,21 @@ We have provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you 
    cd scarf
    ```
 
-2. **Build the project:**
+2. **Install the project:**
    ```bash
-   ./cargow build --release
-   ```
+   ./cargow install --path $PWD --root $HOME/.local/```
    
-   The compiled binary will be located in `target/release/scarf`.
+   The compiled binary will be located in `$HOME/.local/bin`. We'll assume that this path is available in your `$PATH`
 
 3. **Run the CLI:**
-   ```bash
-   ./target/release/scarf --help
+   ```
+   scarf --help
+    ███████╗  ██████╗  █████╗  ██████╗  ███████╗ ██████╗  ███████╗ ███╗   ██╗  ██████╗ ██╗  ██╗
+    ██╔════╝ ██╔════╝ ██╔══██╗ ██╔══██╗ ██╔════╝ ██╔══██╗ ██╔════╝ ████╗  ██║ ██╔════╝ ██║  ██║
+    ███████╗ ██║      ███████║ ██████╔╝ █████╗   ██████╔╝ █████╗   ██╔██╗ ██║ ██║      ███████║
+    ╚════██║ ██║      ██╔══██║ ██╔══██╗ ██╔══╝   ██╔══██╗ ██╔══╝   ██║╚██╗██║ ██║      ██╔══██║
+    ███████║ ╚██████╗ ██║  ██║ ██║  ██║ ██║      ██████╔╝ ███████╗ ██║ ╚████║ ╚██████╗ ██║  ██║
+    ╚══════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝      ╚═════╝  ╚══════╝ ╚═╝  ╚═══╝  ╚═════╝ ╚═╝  ╚═╝
 
     ScarfBench CLI: The command line helper tool for scarf bench
     
@@ -95,16 +95,22 @@ We have provided a handy wrapper for cargo called `cargow` (`cargow.bat` if you 
     -h, --help        Print help
     -V, --version     Print version
    ```
-   
-Optionally, add the binary to your system's PATH for easier access.
-
+  
 ## Usage
 
 After installation, you can use the SCARF CLI to interact with the SCARF Benchmark. Here are some common commands:
 
 ### 1. List Benchmarks
-```bash
-❯ ./target/release/scarf bench list --help
+```
+❯ scarf bench list --help
+
+ ███████╗  ██████╗  █████╗  ██████╗  ███████╗ ██████╗  ███████╗ ███╗   ██╗  ██████╗ ██╗  ██╗
+ ██╔════╝ ██╔════╝ ██╔══██╗ ██╔══██╗ ██╔════╝ ██╔══██╗ ██╔════╝ ████╗  ██║ ██╔════╝ ██║  ██║
+ ███████╗ ██║      ███████║ ██████╔╝ █████╗   ██████╔╝ █████╗   ██╔██╗ ██║ ██║      ███████║
+ ╚════██║ ██║      ██╔══██║ ██╔══██╗ ██╔══╝   ██╔══██╗ ██╔══╝   ██║╚██╗██║ ██║      ██╔══██║
+ ███████║ ╚██████╗ ██║  ██║ ██║  ██║ ██║      ██████╔╝ ███████╗ ██║ ╚████║ ╚██████╗ ██║  ██║
+ ╚══════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝      ╚═════╝  ╚══════╝ ╚═╝  ╚═══╝  ╚═════╝ ╚═╝  ╚═╝
+
 List the application(s) in the benchmark.
 
 Usage: scarf bench list [OPTIONS] --benchmark-dir <ROOT>
@@ -118,7 +124,7 @@ Options:
 
 This should give you something like below
 ```bash
-❯ ./target/release/scarf bench list --benchmark-dir /home/rkrsn/workspace/scarfbench/benchmark --layer business_domain
+❯ scarf bench list --benchmark-dir /home/rkrsn/workspace/scarfbench/benchmark --layer business_domain
 ┌─────────────────┬──────────────┬───────────┬─────────────────────────────────────────────────────────────────────────────────┐
 │ Layer           ┆ Application  ┆ Framework ┆ Path                                                                            │
 ╞═════════════════╪══════════════╪═══════════╪═════════════════════════════════════════════════════════════════════════════════╡
@@ -144,24 +150,33 @@ This should give you something like below
 
 You can use the `scarf bench test` command to test specific benchmark layers or the whole benchmark. Here are some examples:
 
-```bash
-❯ ./target/release/scarf bench test --help
+```
+❯ scarf bench test --help
+
+ ███████╗  ██████╗  █████╗  ██████╗  ███████╗ ██████╗  ███████╗ ███╗   ██╗  ██████╗ ██╗  ██╗
+ ██╔════╝ ██╔════╝ ██╔══██╗ ██╔══██╗ ██╔════╝ ██╔══██╗ ██╔════╝ ████╗  ██║ ██╔════╝ ██║  ██║
+ ███████╗ ██║      ███████║ ██████╔╝ █████╗   ██████╔╝ █████╗   ██╔██╗ ██║ ██║      ███████║
+ ╚════██║ ██║      ██╔══██║ ██╔══██╗ ██╔══╝   ██╔══██╗ ██╔══╝   ██║╚██╗██║ ██║      ██╔══██║
+ ███████║ ╚██████╗ ██║  ██║ ██║  ██║ ██║      ██████╔╝ ███████╗ ██║ ╚████║ ╚██████╗ ██║  ██║
+ ╚══════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝      ╚═════╝  ╚══════╝ ╚═╝  ╚═══╝  ╚═════╝ ╚═╝  ╚═╝
+
 Run regression tests (with `make test`) on the benchmark application(s).
 
-Usage: scarf bench test [OPTIONS] --benchmark-dir <ROOT>
+Usage: scarf bench test [OPTIONS] --benchmark-dir <DIRECTORY>
 
 Options:
-      --benchmark-dir <ROOT>    Path to the root of the scarf benchmark.
-  -v, --verbose...     Increase verbosity (-v, -vv, -vvv). If RUST_LOG is set, it takes precedence.
-      --layer <LAYER>  Application layer to test.
-      --dry-run        Use dry run instead of full run.
-  -h, --help           Print help
+      --benchmark-dir <DIRECTORY>  Path to the root of the scarf benchmark.
+  -v, --verbose...                 Increase verbosity (-v, -vv, -vvv).
+      --layer <LAYER>              Application layer to test.
+      --app <APPLICATION>          Application to run the test on.
+      --dry-run                    Use dry run instead of full run.
+  -h, --help                       Print help
 ```
 
 For example, to test the `persistence` layer:
 
 ```bash
-❯ ./target/release/scarf bench test --benchmark-dir /home/rkrsn/workspace/scarfbench/benchmark --layer persistence
+❯ scarf bench test --benchmark-dir /home/rkrsn/workspace/scarfbench/benchmark --layer persistence
 ```
 
 This will run `make tests` in all the apps in `persistence` layer and provide a summary of the results.
@@ -180,67 +195,4 @@ This will run `make tests` in all the apps in `persistence` layer and provide a 
 │ /home/rkrsn/workspace/scarfbench/benchmark/persistence/address-book/jakarta ┆ Success │
 │ /home/rkrsn/workspace/scarfbench/benchmark/persistence/order/spring         ┆ Success │
 └─────────────────────────────────────────────────────────────────────────────┴─────────┘
-```
-
-
-## Development
-
-### Development Dependencies
-
-Use `make setup` to install and verify tooling (`rustup`, `rustfmt`, `clippy`, `cargo-nextest`, `cargo-llvm-cov`). You can also install them manually:
-
-1. **Clippy** - Linting and code quality checks
-   ```bash
-   ./rustupw component add clippy
-   ```
-
-2. **Rustfmt** - Code formatting
-   ```bash
-   ./rustupw component add rustfmt
-   ```
-
-3. **LLVM Coverage Tools** - Coverage analysis
-   ```bash
-   ./rustupw component add llvm-tools-preview
-   ./cargow install cargo-llvm-cov
-   ```
-
-4. **Nextest** - Advanced test runner
-   ```bash
-   ./cargow install cargo-nextest --locked
-   ```
-
-### Testing
-
-The project follows idiomatic Rust testing practices:
-
-- **Unit tests**: Located within each module under the `#[cfg(test)]` attribute
-- **Integration tests**: Place in `tests/` (not currently present) for CLI-level coverage. 
-  - For intergation tests, use descriptive names for test files, e.g., `cli_tests.rs`.
-
-### Building and Testing
-
-A [Makefile](Makefile) is provided to streamline development tasks. Run `make help` to see available commands. You can run `make help` to see all available targets:
-
-| Target     | Description                                                      |
-|------------|------------------------------------------------------------------|
-| `all`      | Run full pipeline (setup → fmt → clippy → build → test → coverage) |
-| `setup`    | Check/install rustup, cargo, components, nextest, llvm-cov       |
-| `fmt`      | Run `cargo fmt --all`                                            |
-| `clippy`   | Run `cargo clippy` with warnings denied                          |
-| `build`    | Run `cargo build`                                                |
-| `test`     | Run tests using `cargo nextest`                                  |
-| `coverage` | Run coverage using `cargo llvm-cov` + nextest                    |
-| `clean`    | Run `cargo clean`                                                |
-| `help`     | Show help message                                                |
-
-Run the full pipeline with:
-```bash
-make
-```
-
-To build a release binary:
-```bash
-./cargow build --release
-./target/release/scarf --help
 ```
