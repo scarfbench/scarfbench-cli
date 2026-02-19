@@ -1,11 +1,6 @@
-```
-███████  ██████  █████  ██████  ███████ ██████  ███████ ███    ██  ██████ ██   ██ 
-██      ██      ██   ██ ██   ██ ██      ██   ██ ██      ████   ██ ██      ██   ██ 
-███████ ██      ███████ ██████  █████   ██████  █████   ██ ██  ██ ██      ███████ 
-     ██ ██      ██   ██ ██   ██ ██      ██   ██ ██      ██  ██ ██ ██      ██   ██ 
-███████  ██████ ██   ██ ██   ██ ██      ██████  ███████ ██   ████  ██████ ██   ██ 
-```
-**`ScarfBench CLI: The command line helper tool for scarf bench`**
+![scarfbench](https://github.com/user-attachments/assets/8da2583b-ee67-4313-b451-1be0bf63e565)
+
+ScarfBench CLI: The command line helper tool for scarf bench
 
 This is a companion CLI tool for the [SCARF Benchmark](https://github.com/scarfbench/benchmark). It provides a commandline interface to list and test benchmarks, run agents, submit solutions, view and explore leaderboard among other useful tasks.
 
