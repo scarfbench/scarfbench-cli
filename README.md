@@ -11,7 +11,7 @@ This is a companion CLI tool for the [SCARF Benchmark](https://github.com/scarfb
   - [Prerequisites](#prerequisites)
   - [Install with shell script](#install-prebuilt-binaries-via-shell-script)
   - [Install with Homebrew](#install-prebuilt-binaries-via-homebrew)
-  - [Install with cargo](#install-with-cargo)
+  - [Install with cargo](#install-prebuilt-binaries-via-cargo)
   - [Install with npm](#install-prebuilt-binaries-via-npm)
   - [Build from Source](#build-from-source)
 - [Usage](#usage)
