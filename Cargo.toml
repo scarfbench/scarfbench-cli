@@ -1,15 +1,16 @@
 [package]
-name    = "scarfbench-cli"
-version = "0.1.0-rc.1"
-edition = "2024"
-authors = ["Rahul Krishna <i.m.ralk@gmail.com>"]
-license = "EPL-2.0"
-description = "CLI for running, testing, and evaluating SCARF benchmark applications."
-homepage = "https://github.com/scarfbench/scarf"
-repository = "https://github.com/scarfbench/scarf"
-readme = "README.md"
-keywords = ["benchmark", "cli", "evaluation", "testing", "automation"]
-categories = ["command-line-utilities", "development-tools::testing"]
+name            = "scarfbench-cli"
+version         = "0.1.0-rc.1"
+edition         = "2024"
+authors         = ["Rahul Krishna <i.m.ralk@gmail.com>"]
+license         = "Apache-2.0"
+description     = "CLI for running, testing, and evaluating SCARF benchmark applications."
+homepage        = "https://github.com/scarfbench/scarf"
+repository      = "https://github.com/scarfbench/scarf"
+documentation   = "https://docs.rs/scarf"
+readme          = "README.md"
+keywords        = ["benchmark", "cli", "evaluation", "testing", "automation"]
+categories      = ["command-line-utilities", "development-tools::testing"]
 include = [
   "Cargo.toml",
   "src/**",
