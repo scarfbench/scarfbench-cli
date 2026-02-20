@@ -1,6 +1,8 @@
 use crate::bench::BenchCmd;
 use crate::eval::EvalCmd;
 use crate::utils::logo;
+use crate::validate::ValidateArgs;
+
 use clap::{Parser, Subcommand};
 use owo_colors::OwoColorize;
 
@@ -42,4 +44,11 @@ pub enum Commands {
         about = format!("{}", "Subcommands to run evaluation over the benchmark".bold().bright_white())
     )]
     Eval(EvalCmd),
+
+    #[command(
+        before_help = logo(),
+        hide = true,
+        about = format!("{}\n\n{}","WARNING: This is a hidden command meant for CLI runs by the moderators.".bold().italic().bright_yellow(), "Validate conversions".bold().bright_white())
+    )]
+    Validate(ValidateArgs),
 }

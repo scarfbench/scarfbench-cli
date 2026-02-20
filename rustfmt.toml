@@ -4,7 +4,7 @@
 edition = "2024"
 
 # Keep lines readable without going “wrap-crazy”
-max_width = 100
+max_width = 80
 hard_tabs = false
 tab_spaces = 4
 newline_style = "Unix"

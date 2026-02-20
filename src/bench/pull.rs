@@ -112,19 +112,19 @@ impl PullScarfBench {
 
         // Create the save destination
         fs::create_dir_all(&self.dest_dir).with_context(|| {
-            return format!(
+            format!(
                 "Failed to create a directory at {}",
                 &self.dest_dir.to_string_lossy()
-            );
+            )
         })?;
 
         let response = Self::maybe_auth(client.get(&asset.browser_download_url), token.as_deref())
             .send()
             .with_context(|| {
-                return format!(
+                format!(
                     "Failed to download the asset from {}",
                     asset.browser_download_url
-                );
+                )
             })?
             .error_for_status()
             .with_context(|| {
