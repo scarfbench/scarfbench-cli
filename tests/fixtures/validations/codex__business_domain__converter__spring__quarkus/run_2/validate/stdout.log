@@ -1,0 +1,10 @@
+docker build -f Dockerfile -t "converter-quarkus":latest .
+[INFO] Built image: converter-quarkus:latest
+[INFO] Removing existing container
+### Run the container in detached mode
+docker run -d --name "converter-quarkus" "converter-quarkus":latest
+d7cebcaa2a2c45f7b5cf36dacb666486da05de5cc7ef33df4219519e25712abc
+[INFO] Started converter-quarkus, waiting for app to start...
+### Check for startup failure or success
+[ERROR] Container exited before startup success:
+Error response from daemon: can not get logs from container which is dead or marked for removal

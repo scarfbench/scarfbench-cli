@@ -24,7 +24,7 @@ pub struct ValidateArgs {
         long,
         help = "How much time before we hit evaluation timeout (minutes)."
     )]
-    pub timeout: Option<u64>,
+    pub make_timeout: Option<u64>,
 }
 
 /// Runs the validation pipeline on all the conversions
@@ -39,7 +39,7 @@ pub struct ValidateArgs {
 /// d. Then, while inside the output directory, we call make test (with a 300 second) timeout.
 /// e. Pipe the contents of the `make logs` command to validation/run.log file and terminate.
 /// g. Parallelize the whole pipeline with rayon.
-pub fn run(args: ValidateArgs) {
+pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     let conversions_dir = args.conversions_dir;
     let dirs: Vec<_> = WalkDir::new(conversions_dir)
         .min_depth(2)
@@ -79,6 +79,7 @@ pub fn run(args: ValidateArgs) {
             .unwrap();
         })
     });
+    Ok(0)
 }
 
 /// Run `make test` on the deployed directory
@@ -101,7 +102,7 @@ fn copy_validation_harness_and_run_make_test(
                 Some("Makefile" | "makefile" | "Dockerfile")
             )
         {
-            fs::copy(&path, dst.join(&path));
+            let _ = fs::copy(&path, dst.join(&path));
         }
     });
     // --- Now we will run make test ---
@@ -122,7 +123,10 @@ fn copy_validation_harness_and_run_make_test(
         })?;
 
     // Wait for the command to timeout or succeed
-    match child.wait_timeout(timeout).context("wait_timeout failed")? {
+    match child
+        .wait_timeout(timeout)
+        .context("couldn't spawn chile with wait_timeout")?
+    {
         Some(status) => {
             if status.success() {
                 Ok(())

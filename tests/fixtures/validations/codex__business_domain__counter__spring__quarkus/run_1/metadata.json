@@ -1,0 +1,9 @@
+{
+  "agent": "codex",
+  "layer": "business_domain",
+  "app": "counter",
+  "status": "PREPARED",
+  "repeat": 1,
+  "source_framework": "spring",
+  "target_framework": "quarkus"
+}

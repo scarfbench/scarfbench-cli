@@ -1,0 +1,48 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 872B done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/maven:3.9.12-ibm-semeru-21-noble
+#2 DONE 0.6s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.1s
+
+#4 [1/8] FROM docker.io/library/maven:3.9.12-ibm-semeru-21-noble@sha256:63b453701d8e0a4c14dc138efa7d46d3235a156fb80fd16342bb554b00b456db
+#4 DONE 0.0s
+
+#5 [3/8] RUN mkdir -p /ms-playwright && chmod 755 /ms-playwright
+#5 CACHED
+
+#6 [4/8] RUN uv venv /opt/venv     && uv pip install --python /opt/venv/bin/python playwright==1.47.0 pytest
+#6 CACHED
+
+#7 [5/8] RUN playwright install --with-deps chromium
+#7 CACHED
+
+#8 [2/8] RUN apt-get update && apt-get install -y --no-install-recommends curl python3-venv python3-full     && curl -LsSf https://astral.sh/uv/install.sh | sh
+#8 CACHED
+
+#9 [6/8] WORKDIR /app
+#9 CACHED
+
+#10 [internal] load build context
+#10 transferring context: 676.24kB done
+#10 DONE 0.2s
+
+#11 [7/8] COPY . .
+#11 DONE 0.4s
+
+#12 [8/8] RUN if [ -f smoke.py ]; then chmod +x smoke.py; fi
+#12 DONE 0.7s
+
+#13 exporting to image
+#13 exporting layers
+#13 exporting layers 0.4s done
+#13 writing image sha256:a092ba8643c19b842d5a33131f8455582fa362bae9e6cc469f743e9d6d5126fd done
+#13 naming to docker.io/library/counter-quarkus:latest 0.0s done
+#13 DONE 0.6s
+make: *** [Makefile:32: up] Error 1

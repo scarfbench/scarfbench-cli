@@ -1,0 +1,10 @@
+docker build -f Dockerfile -t "cart-quarkus":latest .
+[INFO] Built image: cart-quarkus:latest
+[INFO] Removing existing container
+### Run the container in detached mode
+docker run -d --name "cart-quarkus" "cart-quarkus":latest
+4758e59eab7f3d60b3537e79729b2dfe497c9ee9fc03e07afc7c5ef358ef2714
+[INFO] Started cart-quarkus, waiting for app to start...
+### Check for startup failure or success
+[ERROR] Container exited before startup success:
+Error response from daemon: No such container: cart-quarkus

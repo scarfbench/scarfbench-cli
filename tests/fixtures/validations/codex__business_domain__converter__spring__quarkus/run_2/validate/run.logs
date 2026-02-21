@@ -1,0 +1,6 @@
+docker logs "converter-quarkus"
+
+
+--- stderr ---
+Error response from daemon: No such container: converter-quarkus
+make: *** [Makefile:54: logs] Error 1
