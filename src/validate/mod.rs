@@ -1,5 +1,6 @@
 mod types;
 
+use anyhow::bail;
 use anyhow::{Context, anyhow};
 use clap::Args;
 use kdam::BarExt;
@@ -160,7 +161,7 @@ fn copy_validation_harness_and_run_make_test(
 
     // Spawn command
     let mut child = Command::new("make")
-        .current_dir(dst)
+        .current_dir(&dst)
         .args(["test"])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -176,13 +177,8 @@ fn copy_validation_harness_and_run_make_test(
         .context("couldn't spawn chile with wait_timeout")?
     {
         Some(status) => {
-            if status.success() {
-                Ok(())
-            } else {
-                Err(anyhow!(
-                    "make tests in {} failed!",
-                    conversions_dir.display()
-                ))
+            if !status.success() {
+                Err(anyhow!("make tests in {} failed!", &dst.display()))?
             }
         },
         None => {
@@ -195,6 +191,39 @@ fn copy_validation_harness_and_run_make_test(
                 conversions_dir.display()
             ))?
         },
+    }
+
+    // Now, we can copy the contents of the docker file (using make logs into the validation/run.log file)
+    let log_dir = dst.join("validation");
+    fs::create_dir_all(&log_dir)
+        .with_context(|| format!("Failed to create log dir {:?}", log_dir))?;
+
+    let log_path = log_dir.join("run.log");
+    let log_file = File::create(&log_path)
+        .with_context(|| format!("Failed to create log file {:?}", log_path))?;
+
+    // Clone file handle so both stdout and stderr can write to same file
+    let log_file_err = log_file
+        .try_clone()
+        .with_context(|| "Failed to clone log file handle")?;
+
+    let mut dump_run_logs = Command::new("make")
+        .current_dir(&dst)
+        .args(["logs"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::from(log_file_err))
+        .stdout(Stdio::from(log_file))
+        .spawn()
+        .with_context(|| {
+            format!("Failed to run make tests on {:?}", conversions_dir)
+        })?;
+
+    // Wait for the command to end gracefully
+    let status = dump_run_logs.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        bail!("make logs failed with {:?}", status);
     }
 }
 
