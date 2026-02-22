@@ -101,6 +101,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
             }
         }
         eprint!(""); // GIve ourselves one line after the progress bar in case
+        term::show_cursor()?;
         Ok(())
     });
 
