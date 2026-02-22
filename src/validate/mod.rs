@@ -194,7 +194,7 @@ fn copy_validation_harness_and_run_make_test(
     }
 
     // Now, we can copy the contents of the docker file (using make logs into the validation/run.log file)
-    let log_dir = dst.join("validation");
+    let log_dir = conversions_dir.join("validation");
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("Failed to create log dir {:?}", log_dir))?;
 

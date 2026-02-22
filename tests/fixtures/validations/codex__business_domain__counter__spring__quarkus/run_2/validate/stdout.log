@@ -1,3 +1,0 @@
-docker build -f Dockerfile -t "counter-quarkus":latest .
-[INFO] Built image: counter-quarkus:latest
-[INFO] Removing existing container

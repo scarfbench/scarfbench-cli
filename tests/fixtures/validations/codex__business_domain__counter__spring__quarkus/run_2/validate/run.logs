@@ -1,6 +1,0 @@
-docker logs "counter-quarkus"
-
-
---- stderr ---
-Error response from daemon: No such container: counter-quarkus
-make: *** [Makefile:54: logs] Error 1

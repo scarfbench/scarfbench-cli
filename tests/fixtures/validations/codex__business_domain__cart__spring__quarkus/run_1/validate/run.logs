@@ -1,6 +1,0 @@
-docker logs "cart-quarkus"
-
-
---- stderr ---
-Error response from daemon: No such container: cart-quarkus
-make: *** [Makefile:54: logs] Error 1

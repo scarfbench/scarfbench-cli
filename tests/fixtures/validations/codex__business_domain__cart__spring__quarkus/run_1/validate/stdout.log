@@ -1,4 +1,0 @@
-docker build -f Dockerfile -t "cart-quarkus":latest .
-[INFO] Built image: cart-quarkus:latest
-### Run the container in detached mode
-docker run -d --name "cart-quarkus" "cart-quarkus":latest
