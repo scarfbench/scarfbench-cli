@@ -72,7 +72,7 @@ impl ProgressBar for usize {
                     1.0,
                 )),
                 Column::Text(
-                    format!("[bold blue] {:?} :: ", lable.into()).to_owned(),
+                    format!("[bold blue] {} :: ", lable.into()).to_owned(),
                 ),
                 Column::Animation,
                 Column::Percentage(1),
