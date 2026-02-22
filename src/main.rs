@@ -27,6 +27,8 @@ fn init_logging(verbose: u8) {
         2 => "debug",
         _ => "trace",
     };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_filter))
-        .init();
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(default_filter),
+    )
+    .init();
 }

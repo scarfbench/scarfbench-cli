@@ -113,7 +113,8 @@ fn eval_run_with_jobs_less_than_one() {
 }
 
 #[test]
-fn eval_run_with_pass_at_k_should_correctly_create_the_folder_structure_with_k_runs() {
+fn eval_run_with_pass_at_k_should_correctly_create_the_folder_structure_with_k_runs()
+ {
     let benchmark_dir = benchmark_dir();
     let (layer, app, _) = find_first_app(&benchmark_dir);
     let test_env = TestEnv::new();
@@ -249,10 +250,7 @@ fn eval_run_must_run_test_agent_k_times_and_each_time_succeed() {
         .output()
         .expect("Run scarf eval run --benchmark-dir ... --prepare-only ...");
 
-    assert!(
-        output.status.success(),
-        "The command should have succeeded."
-    );
+    assert!(output.status.success(), "The command should have succeeded.");
 
     assert!(
         WalkDir::new(test_env.eval_out().to_path_buf())
@@ -260,12 +258,14 @@ fn eval_run_must_run_test_agent_k_times_and_each_time_succeed() {
             .max_depth(3)
             .into_iter()
             .filter_map(Result::ok)
-            .filter(|f| !f.file_type().is_dir() && f.file_name().eq("metadata.json"))
+            .filter(|f| !f.file_type().is_dir()
+                && f.file_name().eq("metadata.json"))
             .all(|f| {
                 let metadata: Value = match fs::read_to_string(f.path())
                     .map_err(Error::from)
-                    .and_then(|file| serde_json::from_str(&file).map_err(Error::from))
-                {
+                    .and_then(|file| {
+                        serde_json::from_str(&file).map_err(Error::from)
+                    }) {
                     Ok(m) => {
                         let _ = match fs::read_to_string(
                             f.path()
@@ -276,21 +276,22 @@ fn eval_run_must_run_test_agent_k_times_and_each_time_succeed() {
                                 .join("agent.out"),
                         ) {
                             Ok(f) => {
-                                if !f.contains("[INFO] Agent successfully ran") {
+                                if !f.contains("[INFO] Agent successfully ran")
+                                {
                                     return false;
                                 }
-                            }
+                            },
                             Err(e) => {
                                 eprintln!("Failed with error: {}", e);
                                 return false;
-                            }
+                            },
                         };
                         m
-                    }
+                    },
                     Err(e) => {
                         eprintln!("Failed with error: {}", e);
                         return false;
-                    }
+                    },
                 };
                 metadata["status"]
                     .to_string()
@@ -331,12 +332,14 @@ fn eval_run_must_run_test_agent_k_times_and_record_agent_failures() {
             .max_depth(3)
             .into_iter()
             .filter_map(Result::ok)
-            .filter(|f| !f.file_type().is_dir() && f.file_name().eq("metadata.json"))
+            .filter(|f| !f.file_type().is_dir()
+                && f.file_name().eq("metadata.json"))
             .all(|f| {
                 let metadata: Value = match fs::read_to_string(f.path())
                     .map_err(Error::from)
-                    .and_then(|file| serde_json::from_str(&file).map_err(Error::from))
-                {
+                    .and_then(|file| {
+                        serde_json::from_str(&file).map_err(Error::from)
+                    }) {
                     Ok(m) => {
                         let _ = match fs::read_to_string(
                             f.path()
@@ -350,18 +353,18 @@ fn eval_run_must_run_test_agent_k_times_and_record_agent_failures() {
                                 if !f.contains("[ERROR]") {
                                     return false;
                                 }
-                            }
+                            },
                             Err(e) => {
                                 eprintln!("Failed with error: {}", e);
                                 return false;
-                            }
+                            },
                         };
                         m
-                    }
+                    },
                     Err(e) => {
                         eprintln!("Failed with error: {}", e);
                         return false;
-                    }
+                    },
                 };
                 metadata["status"]
                     .to_string()

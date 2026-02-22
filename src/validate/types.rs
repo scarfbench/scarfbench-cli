@@ -4,7 +4,7 @@ use strum_macros::Display;
 
 /// This captures the conversion status
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]   // Nice to see
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")] // Nice to see
 pub enum Status {
     Converted,
     Prepared,
@@ -12,7 +12,7 @@ pub enum Status {
 }
 /// This captures the conversion status
 #[derive(Clone, Debug, Deserialize, Serialize, Display)]
-#[serde(rename_all = "snake_case")]   // Nice to see
+#[serde(rename_all = "snake_case")] // Nice to see
 #[strum(serialize_all = "snake_case")]
 pub enum Framework {
     Spring,

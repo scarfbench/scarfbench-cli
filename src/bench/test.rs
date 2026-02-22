@@ -62,10 +62,9 @@ fn run_makefile(path: &PathBuf, dry_run: bool) -> Result<RunResult> {
 
     cmd.arg("test");
 
-    let output = cmd
-        .current_dir(path)
-        .output()
-        .with_context(|| format!("Failed to execute 'make [-n] test' in {}", path.display()))?;
+    let output = cmd.current_dir(path).output().with_context(|| {
+        format!("Failed to execute 'make [-n] test' in {}", path.display())
+    })?;
 
     Ok(RunResult {
         dir: path.to_path_buf(),
@@ -77,7 +76,9 @@ fn run_makefile(path: &PathBuf, dry_run: bool) -> Result<RunResult> {
 
 /// The test subcommand that runs make test on all the applications to ensure they work as expected
 pub fn run(args: BenchTestArgs) -> Result<i32> {
-    log::info!("Running tests to ensure functionality of benchmark applications...");
+    log::info!(
+        "Running tests to ensure functionality of benchmark applications..."
+    );
 
     if !args.benchmark_dir.exists() {
         anyhow::bail!(
@@ -181,33 +182,43 @@ pub fn run(args: BenchTestArgs) -> Result<i32> {
     for (dir, res) in rx.iter() {
         match res {
             Ok(res) if res.ok => {
-                results.push([dir.to_string_lossy().into_owned(), "Success".to_string()]);
+                results.push([
+                    dir.to_string_lossy().into_owned(),
+                    "Success".to_string(),
+                ]);
                 log::info!(
                     "Makefile test in {} succeeded. Output:\n{}",
                     res.dir.display(),
                     res.stdout
                 );
-            }
+            },
             Ok(res) => {
-                results.push([dir.to_string_lossy().into_owned(), "Failure".to_string()]);
+                results.push([
+                    dir.to_string_lossy().into_owned(),
+                    "Failure".to_string(),
+                ]);
                 log::warn!(
                     "Makefile test in {} failed. Stderr:\n{}",
                     res.dir.display(),
                     res.stderr
                 );
-            }
+            },
             Err(e) => {
-                results.push([dir.to_string_lossy().into_owned(), "Error".to_string()]);
+                results.push([
+                    dir.to_string_lossy().into_owned(),
+                    "Error".to_string(),
+                ]);
                 log::error!(
                     "Makefile test in {} encountered an error: {}",
                     dir.display(),
                     e
                 );
-            }
+            },
         }
     }
 
-    let header: [String; 2] = ["Application Path".to_string(), "Result".to_string()];
+    let header: [String; 2] =
+        ["Application Path".to_string(), "Result".to_string()];
     let mut table: comfy_table::Table = comfy_table::Table::new();
 
     // Tabulate the final results
@@ -239,10 +250,12 @@ mod tests {
         let app_dir = tempfile.path().join("layer/app/framwork");
 
         // Create a dummy makefile
-        _touch_makefile(&app_dir).expect("Failed to create Makefile in app directory");
+        _touch_makefile(&app_dir)
+            .expect("Failed to create Makefile in app directory");
 
         // Run the makefile in dry-run mode
-        let result = run_makefile(&app_dir, false).expect("Failed to run the makefile");
+        let result =
+            run_makefile(&app_dir, false).expect("Failed to run the makefile");
 
         // Validate the RunResult captures the makefile directory correctly
         assert_eq!(result.dir, app_dir);

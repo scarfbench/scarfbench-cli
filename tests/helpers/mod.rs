@@ -26,15 +26,13 @@ impl TestEnv {
             .join("test_agent");
 
         // Create a temporary eval out directory
-        let tmp = tempfile::tempdir().expect("Failed to create temp dir for test env");
+        let tmp = tempfile::tempdir()
+            .expect("Failed to create temp dir for test env");
         let eval_out = tmp.path().join("test_eval_out");
-        std::fs::create_dir_all(&eval_out).expect("Failed to create eval_out dir");
+        std::fs::create_dir_all(&eval_out)
+            .expect("Failed to create eval_out dir");
 
-        Self {
-            _tmp: tmp,
-            eval_out,
-            agent_dir,
-        }
+        Self { _tmp: tmp, eval_out, agent_dir }
     }
 
     /// Getter for eval_out
@@ -129,7 +127,9 @@ pub fn find_first_app(bench_dir: &PathBuf) -> (String, String, String) {
                 //              Then select them      <-------   if all of these are present
                 //                      |                                      |
                 //  |```````````````````````````````````````|   |````````````````````````````|
-                (Some(layer), Some(app), Some(framework)) => Some((layer, app, framework)),
+                (Some(layer), Some(app), Some(framework)) => {
+                    Some((layer, app, framework))
+                },
                 _ => None,
             }
         })

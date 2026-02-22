@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Read};
 
-use kdam::{BarExt, RichProgress};
+use kdam::{BarExt, Column, RichProgress, Spinner, tqdm};
 use owo_colors::OwoColorize;
 use std::io::{Error, ErrorKind, Result};
 
@@ -51,6 +51,39 @@ impl<R: Read> Drop for ProgressReader<R> {
         if let Some(total) = self.total {
             let _ = self.pb.update_to(total);
         }
+    }
+}
+pub trait ProgressBar {
+    fn progress(self, lable: impl Into<String>) -> RichProgress;
+}
+impl ProgressBar for usize {
+    fn progress(self, lable: impl Into<String>) -> RichProgress {
+        RichProgress::new(
+            tqdm!(
+                total = self,
+                unit_scale = true,
+                unit_divisor = 1024,
+                unit = "B"
+            ),
+            vec![
+                Column::Spinner(Spinner::new(
+                    &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+                    80.0,
+                    1.0,
+                )),
+                Column::Text(
+                    format!("[bold blue] {:?} :: ", lable.into()).to_owned(),
+                ),
+                Column::Animation,
+                Column::Percentage(1),
+                Column::Text("•".to_owned()),
+                Column::CountTotal,
+                Column::Text("•".to_owned()),
+                Column::Rate,
+                Column::Text("•".to_owned()),
+                Column::RemainingTime,
+            ],
+        )
     }
 }
 pub(crate) fn logo() -> String {

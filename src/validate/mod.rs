@@ -2,15 +2,23 @@ mod types;
 
 use anyhow::{Context, anyhow};
 use clap::Args;
-use jwalk::WalkDir;
-use rayon::ThreadPoolBuilder;
+use kdam::BarExt;
+use kdam::term;
+use walkdir::WalkDir;
+
 use rayon::prelude::*;
 use std::fs;
 use std::fs::File;
+
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 use wait_timeout::ChildExt;
+
+use crate::utils::ProgressBar;
 
 #[derive(Args, Debug)]
 pub struct ValidateArgs {
@@ -22,11 +30,16 @@ pub struct ValidateArgs {
 
     #[arg(
         long,
+        default_value_t = 5,
         help = "How much time before we hit evaluation timeout (minutes)."
     )]
-    pub make_timeout: Option<u64>,
+    pub timeout: u64,
 }
 
+// Each worker will send back to progress bar thread one of these
+enum UiMessage {
+    Tick(usize),
+}
 /// Runs the validation pipeline on all the conversions
 ///
 /// Notes
@@ -52,33 +65,65 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                 return false;
             }
             let Some(name) = entry
-                .parent_path
+                .path()
                 .parent()
                 .and_then(|p| p.file_name())
                 .map(|name| name.to_string_lossy())
             else {
                 return false;
             };
-
-            let split: Vec<_> = name.split("__").collect();
-
-            split.len() == 4
+            // We want to have exactly five components for valid folders
+            name.split("__").collect::<Vec<_>>().len() == 5
         })
-        .map(|d| d.path())
+        .map(|d| d.into_path())
         .collect::<Vec<_>>();
+    log::debug!("Found {} conversions", dirs.len());
 
-    // Dispatch parallel calls
-    ThreadPoolBuilder::new().build().unwrap().install(|| {
-        dirs.par_iter().for_each(|dir| {
-            copy_validation_harness_and_run_make_test(
-                &args.benchmark_dir,
-                dir,
-                args.timeout,
-            )
-            .with_context(|| format!("Failed to run make tests on {:?}", dir))
-            .unwrap();
-        })
+    let total = dirs.len();
+
+    let (tx, rx) = mpsc::channel::<UiMessage>();
+
+    // Set up the terminal printer aggregrator that will aggregate the responses
+    // from each of my worker and create/update a progress bar
+    let tui = thread::spawn(move || -> anyhow::Result<()> {
+        // Set up my terminal
+        term::init(std::io::stderr().is_terminal());
+        term::hide_cursor()?;
+
+        // initialize our progress bar
+        let mut pb = total.progress("Evaluating Conversions");
+
+        while let Ok(msg) = rx.recv() {
+            match msg {
+                UiMessage::Tick(n) => {
+                    pb.update(n)?;
+                },
+            }
+        }
+        eprint!(""); // GIve ourselves one line after the progress bar in case
+        Ok(())
     });
+
+    // Dispatch parallel calls (one for each directory I found above)
+    dirs.par_iter().for_each_with(tx.clone(), |tx, dir| {
+        let res = copy_validation_harness_and_run_make_test(
+            &args.benchmark_dir,
+            &dir,
+            args.timeout,
+        )
+        .with_context(|| {
+            format!("Failed to run make tests on {:?}", dir.display())
+        });
+        match res {
+            Ok(_) => {},
+            Err(_) => {},
+        }
+
+        let _ = tx.send(UiMessage::Tick(1));
+    });
+    // Thats it---discard any stray transmitters
+    drop(tx);
+    tui.join().map_err(|e| anyhow!("TUI panicked: {:?}", e))??;
     Ok(0)
 }
 
@@ -86,13 +131,12 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 fn copy_validation_harness_and_run_make_test(
     benchmark_dir: &PathBuf,
     conversions_dir: &PathBuf,
-    timeout_in_minutes: Option<u64>,
+    timeout_in_minutes: u64,
 ) -> anyhow::Result<()> {
     // --- First we will copy over the test harness from the benchmark directory ---
     let (layer, app, framework) = read_metadata_json(conversions_dir)?;
     let src = benchmark_dir.join(layer).join(app).join(framework);
     let dst = conversions_dir.join("output");
-    log::debug!("Reading contents from {:?}", src);
     fs::read_dir(&src)?.for_each(|entry| {
         let path: PathBuf =
             entry.map(|f| PathBuf::from(f.file_name())).unwrap();
@@ -102,21 +146,24 @@ fn copy_validation_harness_and_run_make_test(
                 Some("Makefile" | "makefile" | "Dockerfile")
             )
         {
-            let _ = fs::copy(&path, dst.join(&path));
+            log::info!(
+                "Copying {} to {}",
+                src.join(&path).to_string_lossy(),
+                dst.join(&path).to_string_lossy()
+            );
+            let _ = fs::copy(src.join(&path), dst.join(&path));
         }
     });
     // --- Now we will run make test ---
-    let timeout = match timeout_in_minutes {
-        Some(minutes) => Duration::from_mins(minutes),
-        _ => Duration::from_mins(5),
-    };
+    let timeout = Duration::from_mins(timeout_in_minutes);
 
     // Spawn command
     let mut child = Command::new("make")
-        .current_dir(conversions_dir)
+        .current_dir(dst)
+        .args(["test"])
         .stdin(Stdio::null())
-        .stderr(Stdio::inherit())
-        .stdout(Stdio::inherit())
+        .stderr(Stdio::null())
+        .stdout(Stdio::null())
         .spawn()
         .with_context(|| {
             format!("Failed to run make tests on {:?}", conversions_dir)

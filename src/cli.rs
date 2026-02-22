@@ -48,7 +48,7 @@ pub enum Commands {
     #[command(
         before_help = logo(),
         hide = true,
-        about = format!("{}\n\n{}","WARNING: This is a hidden command meant for CLI runs by the moderators.".bold().italic().bright_yellow(), "Validate conversions".bold().bright_white())
+        about = format!("{}\n\n{}","WARNING: This is a hidden command meant for CI runs by the moderators.".bold().italic().bright_yellow(), "Validate conversions".bold().bright_white())
     )]
     Validate(ValidateArgs),
 }

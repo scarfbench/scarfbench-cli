@@ -55,11 +55,11 @@ pub(super) struct EvalGroup {
     runs: Vec<EvalInstance>, // Each item captures a pass@k repeat
 }
 impl EvalGroup {
-    pub(super) fn new(root: impl Into<PathBuf>, runs: impl Into<Vec<EvalInstance>>) -> Self {
-        Self {
-            root: root.into(),
-            runs: runs.into(),
-        }
+    pub(super) fn new(
+        root: impl Into<PathBuf>,
+        runs: impl Into<Vec<EvalInstance>>,
+    ) -> Self {
+        Self { root: root.into(), runs: runs.into() }
     }
     pub(super) fn runs(&self) -> &[EvalInstance] {
         &self.runs
@@ -139,7 +139,11 @@ impl EvalKey {
     pub(super) fn repr(&self) -> String {
         format!(
             "{}__{}__{}__{}__{}",
-            &self.agent, &self.layer, &self.app, &self.source_framework, &self.target_framework
+            &self.agent,
+            &self.layer,
+            &self.app,
+            &self.source_framework,
+            &self.target_framework
         )
     }
 }

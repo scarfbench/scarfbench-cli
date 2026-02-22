@@ -1,9 +1,9 @@
-use crate::utils::ProgressReader;
+use crate::utils::{ProgressBar, ProgressReader};
 use anyhow::{Context, Result};
 use bon::Builder;
 use clap::Args;
 use flate2::bufread::GzDecoder;
-use kdam::{Column, RichProgress, Spinner, term, tqdm};
+use kdam::term;
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -22,7 +22,11 @@ pub struct BenchPullArgs {
     )]
     pub dest: PathBuf,
 
-    #[arg(long, help = "Version of scarfbench to pull.", value_name = "VERSION")]
+    #[arg(
+        long,
+        help = "Version of scarfbench to pull.",
+        value_name = "VERSION"
+    )]
     pub version: Option<String>,
 }
 
@@ -61,7 +65,10 @@ impl PullScarfBench {
             })
     }
 
-    fn maybe_auth(request: RequestBuilder, token: Option<&str>) -> RequestBuilder {
+    fn maybe_auth(
+        request: RequestBuilder,
+        token: Option<&str>,
+    ) -> RequestBuilder {
         match token {
             Some(token) => request.bearer_auth(token),
             None => request,
@@ -78,7 +85,9 @@ impl PullScarfBench {
                 "https://api.github.com/repos/scarfbench/benchmark/releases/tags/{}",
                 v
             ),
-            None => format!("https://api.github.com/repos/scarfbench/benchmark/releases/latest"),
+            None => format!(
+                "https://api.github.com/repos/scarfbench/benchmark/releases/latest"
+            ),
         };
         log::info!("Downloading from {api_url}");
 
@@ -94,9 +103,8 @@ impl PullScarfBench {
                 )
             })?;
 
-        let releases: Release = release_response
-            .json()
-            .context("Failed to parse release JSON")?;
+        let releases: Release =
+            release_response.json().context("Failed to parse release JSON")?;
 
         // Get the asset to download
         let asset = releases
@@ -135,46 +143,25 @@ impl PullScarfBench {
             })?;
 
         // Get the total size of the payload (our benchmark tar.gz we are downloading)
-        let total_size = response.content_length().map(|s| s as usize).unwrap_or(0);
+        let total_size =
+            response.content_length().map(|s| s as usize).unwrap_or(0);
 
         // Set up terminal to tell kdam if we are in a active terminal (for colors and ansi stuff)
         term::init(std::io::stderr().is_terminal());
         term::hide_cursor()?;
 
         // initialize our progress bar
-        let pb = RichProgress::new(
-            tqdm!(
-                total = total_size as usize,
-                unit_scale = true,
-                unit_divisor = 1024,
-                unit = "B"
-            ),
-            vec![
-                Column::Spinner(Spinner::new(
-                    &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-                    80.0,
-                    1.0,
-                )),
-                Column::Text("[bold blue]Downloading scarfbench...".to_owned()),
-                Column::Animation,
-                Column::Percentage(1),
-                Column::Text("•".to_owned()),
-                Column::CountTotal,
-                Column::Text("•".to_owned()),
-                Column::Rate,
-                Column::Text("•".to_owned()),
-                Column::RemainingTime,
-            ],
-        );
+        let pb = total_size.progress("Downloading scarfbench");
 
-        let pr = ProgressReader::new(BufReader::new(response), pb, Some(total_size));
+        let pr =
+            ProgressReader::new(BufReader::new(response), pb, Some(total_size));
 
         // Extract by streaming the response to tar directly
         let tar = GzDecoder::new(pr);
         let mut archive = Archive::new(tar);
-        archive
-            .unpack(&self.dest_dir)
-            .with_context(|| format!("Failed to extract into {}", self.dest_dir.display()))?;
+        archive.unpack(&self.dest_dir).with_context(|| {
+            format!("Failed to extract into {}", self.dest_dir.display())
+        })?;
         term::show_cursor()?;
         Ok(0)
     }
