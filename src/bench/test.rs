@@ -25,6 +25,13 @@ pub struct BenchTestArgs {
         help = "Use dry run instead of full run."
     )]
     pub dry_run: bool,
+
+    #[arg(
+        long = "logs-dest",
+        action = ArgAction::SetTrue,
+        help = "Where to save the logs."
+    )]
+    pub maybe_logs: Option<PathBuf>,
 }
 
 /// Create a container to hold command run result

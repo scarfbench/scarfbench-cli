@@ -1,6 +1,5 @@
 mod types;
 
-use anyhow::bail;
 use anyhow::{Context, anyhow};
 use clap::Args;
 use kdam::BarExt;
@@ -139,61 +138,34 @@ fn copy_validation_harness_and_run_make_test(
     let (layer, app, framework) = read_metadata_json(conversions_dir)?;
     let src = benchmark_dir.join(layer).join(app).join(framework);
     let dst = conversions_dir.join("output");
-    fs::read_dir(&src)?.for_each(|entry| {
-        let path: PathBuf =
-            entry.map(|f| PathBuf::from(f.file_name())).unwrap();
-        if path.is_file()
-            && matches!(
-                path.to_str(),
-                Some("Makefile" | "makefile" | "Dockerfile")
-            )
-        {
+    fs::read_dir(&src)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                    matches!(n, "Makefile" | "makefile" | "Dockerfile")
+                })
+        })
+        .for_each(|src_path| {
+            let dst_path = dst.join(src_path.file_name().unwrap()); // safe because file_name exists
             log::info!(
-                "Copying {} to {}",
-                src.join(&path).to_string_lossy(),
-                dst.join(&path).to_string_lossy()
+                "Copying {} -> {}",
+                src_path.display(),
+                dst_path.display()
             );
-            let _ = fs::copy(src.join(&path), dst.join(&path));
-        }
-    });
+
+            if let Err(e) = fs::copy(&src_path, &dst_path) {
+                log::warn!(
+                    "Failed to copy {} -> {}: {e}",
+                    src_path.display(),
+                    dst_path.display()
+                );
+            }
+        });
     // --- Now we will run make test ---
     let timeout = Duration::from_mins(timeout_in_minutes);
 
-    // Spawn command
-    let mut child = Command::new("make")
-        .current_dir(&dst)
-        .args(["test"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .with_context(|| {
-            format!("Failed to run make tests on {:?}", conversions_dir)
-        })?;
-
-    // Wait for the command to timeout or succeed
-    match child
-        .wait_timeout(timeout)
-        .context("couldn't spawn chile with wait_timeout")?
-    {
-        Some(status) => {
-            if !status.success() {
-                Err(anyhow!("make tests in {} failed!", &dst.display()))?
-            }
-        },
-        None => {
-            // Kill the process because we didn't get a status back...
-            child.kill()?;
-            child.wait()?; // Wait for the process to finish killing
-            Err(anyhow::anyhow!(
-                "make tests timed out after {:?} in {}",
-                timeout,
-                conversions_dir.display()
-            ))?
-        },
-    }
-
-    // Now, we can copy the contents of the docker file (using make logs into the validation/run.log file)
     let log_dir = conversions_dir.join("validation");
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("Failed to create log dir {:?}", log_dir))?;
@@ -207,9 +179,10 @@ fn copy_validation_harness_and_run_make_test(
         .try_clone()
         .with_context(|| "Failed to clone log file handle")?;
 
-    let mut dump_run_logs = Command::new("make")
+    // Spawn command
+    let mut child = Command::new("make")
         .current_dir(&dst)
-        .args(["logs"])
+        .args(["test"])
         .stdin(Stdio::null())
         .stderr(Stdio::from(log_file_err))
         .stdout(Stdio::from(log_file))
@@ -218,13 +191,30 @@ fn copy_validation_harness_and_run_make_test(
             format!("Failed to run make tests on {:?}", conversions_dir)
         })?;
 
-    // Wait for the command to end gracefully
-    let status = dump_run_logs.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        bail!("make logs failed with {:?}", status);
-    }
+    // Wait for the command to timeout or succeed
+    match child
+        .wait_timeout(timeout)
+        .context("couldn't spawn chile with wait_timeout")?
+    {
+        Some(status) if status.success() => Ok(()),
+        Some(status) => Err(anyhow!(
+            "make tests in {} failed with {:?}",
+            &dst.display(),
+            status
+        )),
+        None => {
+            // Kill the process because we didn't get a status back...
+            child.kill()?;
+            child.wait()?; // Wait for the process to finish killing
+            Err(anyhow::anyhow!(
+                "make tests timed out after {:?} in {}",
+                timeout,
+                conversions_dir.display()
+            ))
+        },
+    }?;
+
+    Ok(())
 }
 
 /// Read the metadata.json file. This will give us the layer name, the app name, and the target framework
