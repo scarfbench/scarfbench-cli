@@ -164,7 +164,7 @@ fn copy_validation_harness_and_run_make_test(
             }
         });
     // --- Now we will run make test ---
-    let timeout = Duration::from_mins(timeout_in_minutes);
+    let timeout = Duration::from_secs(timeout_in_minutes * 60);
 
     let log_dir = conversions_dir.join("validation");
     fs::create_dir_all(&log_dir)
