@@ -54,16 +54,24 @@ impl<R: Read> Drop for ProgressReader<R> {
     }
 }
 pub trait ProgressBar {
-    fn progress(self, lable: impl Into<String>) -> RichProgress;
+    fn progress(
+        self,
+        lable: impl Into<String>,
+        unit: impl Into<String>,
+    ) -> RichProgress;
 }
 impl ProgressBar for usize {
-    fn progress(self, lable: impl Into<String>) -> RichProgress {
+    fn progress(
+        self,
+        lable: impl Into<String>,
+        unit: impl Into<String>,
+    ) -> RichProgress {
         RichProgress::new(
             tqdm!(
                 total = self,
                 unit_scale = true,
                 unit_divisor = 1024,
-                unit = "B"
+                unit = unit.into()
             ),
             vec![
                 Column::Spinner(Spinner::new(

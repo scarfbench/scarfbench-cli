@@ -4,6 +4,7 @@ use anyhow::{Context, anyhow};
 use clap::Args;
 use kdam::BarExt;
 use kdam::term;
+use owo_colors::OwoColorize;
 use walkdir::WalkDir;
 
 use rayon::prelude::*;
@@ -39,6 +40,7 @@ pub struct ValidateArgs {
 // Each worker will send back to progress bar thread one of these
 enum UiMessage {
     Tick(usize),
+    Log(String),
 }
 /// Runs the validation pipeline on all the conversions
 ///
@@ -91,12 +93,15 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
         term::hide_cursor()?;
 
         // initialize our progress bar
-        let mut pb = total.progress("Evaluating Conversions");
+        let mut pb = total.progress("Evaluating Conversions", "Solutions");
 
         while let Ok(msg) = rx.recv() {
             match msg {
                 UiMessage::Tick(n) => {
                     pb.update(n)?;
+                },
+                UiMessage::Log(l) => {
+                    pb.write(l)?;
                 },
             }
         }
@@ -116,8 +121,23 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
             format!("Failed to run make tests on {:?}", dir.display())
         });
         match res {
-            Ok(_) => {},
-            Err(_) => {},
+            Ok(_) => {
+                let _ = tx.send(UiMessage::Log(format!(
+                    "{}",
+                    format!(
+                        "[INFO] Successfully completed validations on {}",
+                        dir.to_string_lossy()
+                    )
+                    .bold()
+                    .bright_cyan()
+                )));
+            },
+            Err(e) => {
+                let _ = tx.send(UiMessage::Log(format!(
+                    "{}",
+                    format!("[ERROR] {}", e).bold().bright_magenta()
+                )));
+            },
         }
 
         let _ = tx.send(UiMessage::Tick(1));
@@ -142,10 +162,10 @@ fn copy_validation_harness_and_run_make_test(
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| {
-            p.is_file()
-                && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                    matches!(n, "Makefile" | "makefile" | "Dockerfile")
-                })
+            p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                matches!(n, "Makefile" | "makefile" | "Dockerfile" | "smoke.py")
+                    || (n == "smoke" && p.is_dir())
+            })
         })
         .for_each(|src_path| {
             let dst_path = dst.join(src_path.file_name().unwrap()); // safe because file_name exists
@@ -155,7 +175,15 @@ fn copy_validation_harness_and_run_make_test(
                 dst_path.display()
             );
 
-            if let Err(e) = fs::copy(&src_path, &dst_path) {
+            let copy_result = if src_path.is_dir() {
+                copy_dir_recursive(&src_path, &dst_path)
+            } else {
+                fs::copy(&src_path, &dst_path)
+                    .map(|_| ())
+                    .map_err(anyhow::Error::from)
+            };
+
+            if let Err(e) = copy_result {
                 log::warn!(
                     "Failed to copy {} -> {}: {e}",
                     src_path.display(),
@@ -235,4 +263,20 @@ fn read_metadata_json(path: &Path) -> anyhow::Result<(String, String, String)> {
 
     // Return the 3-tuple (triple?) with the useful information from the metadata.json
     Ok((metadata.layer, metadata.app, metadata.target_framework.to_string()))
+}
+
+fn copy_dir_recursive(from: &Path, to: &Path) -> anyhow::Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = to.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else if src_path.is_file() {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
