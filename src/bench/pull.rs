@@ -151,7 +151,7 @@ impl PullScarfBench {
         term::hide_cursor()?;
 
         // initialize our progress bar
-        let pb = total_size.progress("Downloading scarfbench");
+        let pb = total_size.progress("Downloading scarfbench", "B");
 
         let pr =
             ProgressReader::new(BufReader::new(response), pb, Some(total_size));

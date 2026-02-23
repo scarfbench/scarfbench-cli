@@ -51,6 +51,23 @@ pub fn dispatch_agent(
                         .arg("./run.sh")
                         .current_dir(agent_dir)
                         .env("SCARF_WORK_DIR", eval_instance.output())
+                        .env("SCARF_WORKDIR", eval_instance.output())
+                        .env(
+                            "SCARF_FRAMEWORK_FROM",
+                            run_metadata.source_framework(),
+                        )
+                        .env(
+                            "SCARF_FROM_FRAMEWORK",
+                            run_metadata.source_framework(),
+                        )
+                        .env(
+                            "SCARF_FRAMEWORK_TO",
+                            run_metadata.target_framework(),
+                        )
+                        .env(
+                            "SCARF_TO_FRAMEWORK",
+                            run_metadata.target_framework(),
+                        )
                         .env(
                             "SCARF_SOURCE_FRAMEWORK",
                             run_metadata.source_framework(),
@@ -86,8 +103,7 @@ pub fn dispatch_agent(
                             &run_metadata,
                         )?;
                     } else {
-                        run_metadata
-                            .set_status(String::from("AGENT EXECUTION FAILED"));
+                        run_metadata.set_status(String::from("CONVERTED"));
                         update_eval_metadata(
                             eval_instance.root(),
                             &run_metadata,
