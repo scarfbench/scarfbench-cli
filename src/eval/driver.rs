@@ -95,13 +95,13 @@ pub fn dispatch_agent(
                             "Agent {} exectuion complete",
                             eval_key.agent()
                         );
-                        run_metadata.set_status(String::from("COMPLETED"));
+                        run_metadata.set_status(String::from("CONVERTED"));
                         update_eval_metadata(
                             eval_instance.root(),
                             &run_metadata,
                         )?;
                     } else {
-                        run_metadata.set_status(String::from("CONVERTED"));
+                        run_metadata.set_status(String::from("FAILED"));
                         update_eval_metadata(
                             eval_instance.root(),
                             &run_metadata,

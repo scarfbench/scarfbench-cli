@@ -9,6 +9,7 @@ pub enum Status {
     Converted,
     Prepared,
     Validated,
+    Failed,
 }
 /// This captures the conversion status
 #[derive(Clone, Debug, Deserialize, Serialize, Display)]

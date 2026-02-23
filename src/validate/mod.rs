@@ -260,7 +260,6 @@ fn read_metadata_json(path: &Path) -> anyhow::Result<(String, String, String)> {
         .with_context(|| {
             format!("failed to parse metadata JSON from {}", path.display())
         })?;
-
     // Return the 3-tuple (triple?) with the useful information from the metadata.json
     Ok((metadata.layer, metadata.app, metadata.target_framework.to_string()))
 }
