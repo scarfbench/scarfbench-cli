@@ -95,9 +95,7 @@ pub fn dispatch_agent(
                             "Agent {} exectuion complete",
                             eval_key.agent()
                         );
-                        run_metadata.set_status(String::from(
-                            "AGENT EXECUTION COMPLETE",
-                        ));
+                        run_metadata.set_status(String::from("COMPLETED"));
                         update_eval_metadata(
                             eval_instance.root(),
                             &run_metadata,
