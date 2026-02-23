@@ -3,8 +3,8 @@ requires = ["maturin>=1.6"]
 build-backend = "maturin"
 
 [project]
-name = "scarf"
-version = "0.1.0"
+name = "scarfbench-cli"
+version = "0.1.2"
 description = "ScarfBench CLI"
 requires-python = ">=3.9"
 license = {text = "Apache-2.0"}
