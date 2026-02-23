@@ -7,6 +7,7 @@ use strum_macros::Display;
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")] // Nice to see
 pub enum Status {
     Converted,
+    Completed,
     Prepared,
     Validated,
     Failed,
