@@ -64,3 +64,41 @@ To build a release binary:
 ./cargow build --release
 ./target/release/scarf --help
 ```
+
+## `scarf validate` series of commands for validating submissions
+<a id="cmd-validate"></a>
+`scarf validate` is currently a hidden command intended for CI/moderation workflows, this command is unavailable for general use and may only be used by the moderators of the benchmark. 
+
+THis command expects a github personal access token (PAT) with appropriate permissions to access this repository lest it fail with authentication errors.
+
+In order to get a PAT, follow the instructions [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token) and then set the `GITHUB_TOKEN` environment variable in your shell:
+
+```bash
+export GITHUB_TOKEN=your_personal_access_token_here
+```
+
+Then you may run the `scarf validate` command to run smoke tests on the converted applications and populate the leaderboard. 
+
+**WARNING: Running this locally is not recommended except for testing purposes.**
+
+#### `scarf validate --help`
+
+```text
+WARNING: This is a hidden command meant for CI runs by the moderators.
+
+Validate conversions
+
+Usage: scarf validate [OPTIONS] --conversions-dir <CONVERSIONS_DIR> --benchmark-dir <BENCHMARK_DIR>
+
+Options:
+    --conversions-dir <CONVERSIONS_DIR>
+      The path to where the agentic conversions are stored
+  -v, --verbose...
+      Increase verbosity (-v, -vv, -vvv).
+    --benchmark-dir <BENCHMARK_DIR>
+      The path where the benchmark directory is stored
+    --timeout <TIMEOUT>
+      How much time before we hit evaluation timeout (minutes). [default: 5]
+  -h, --help
+      Print help
+```

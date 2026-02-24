@@ -104,70 +104,136 @@ npm install @scarfbench/scarfbench-cli
   
 ## Usage
 
-After installation, you can use the SCARF CLI to interact with the SCARF Benchmark. Here are some common commands:
+After installation, use `scarf --help` to explore the command tree.
 
-### 1. List Benchmarks
+### Top-level command
+
+```text
+Usage: scarf [OPTIONS] <COMMAND>
+
+Commands:
+  bench  A series of subcommands to run on the benchmark applications.
+  eval   Subcommands to run evaluation over the benchmark
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...  Increase verbosity (-v, -vv, -vvv).
+  -h, --help        Print help
+  -V, --version     Print version
 ```
-❯ scarf bench list --help
 
- ███████╗  ██████╗  █████╗  ██████╗  ███████╗ ██████╗  ███████╗ ███╗   ██╗  ██████╗ ██╗  ██╗
- ██╔════╝ ██╔════╝ ██╔══██╗ ██╔══██╗ ██╔════╝ ██╔══██╗ ██╔════╝ ████╗  ██║ ██╔════╝ ██║  ██║
- ███████╗ ██║      ███████║ ██████╔╝ █████╗   ██████╔╝ █████╗   ██╔██╗ ██║ ██║      ███████║
- ╚════██║ ██║      ██╔══██║ ██╔══██╗ ██╔══╝   ██╔══██╗ ██╔══╝   ██║╚██╗██║ ██║      ██╔══██║
- ███████║ ╚██████╗ ██║  ██║ ██║  ██║ ██║      ██████╔╝ ███████╗ ██║ ╚████║ ╚██████╗ ██║  ██║
- ╚══════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝      ╚═════╝  ╚══════╝ ╚═╝  ╚═══╝  ╚═════╝ ╚═╝  ╚═╝
+### Quick reference
+
+<table border="2" cellpadding="8" cellspacing="0">
+  <thead>
+    <tr>
+      <th><strong>Group</strong></th>
+      <th><strong>Command</strong></th>
+      <th><strong>Purpose</strong></th>
+      <th><strong>Link</strong></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="4"><strong>Benchmark operations</strong></td>
+      <td><code>scarf bench</code></td>
+      <td>Operate on benchmark apps</td>
+      <td><a href="#group-bench">Go to section</a></td>
+    </tr>
+    <tr>
+      <td><code>scarf bench pull</code></td>
+      <td>Pull benchmark versions</td>
+      <td><a href="#cmd-bench-pull">Command help</a></td>
+    </tr>
+    <tr>
+      <td><code>scarf bench list</code></td>
+      <td>List benchmark applications</td>
+      <td><a href="#cmd-bench-list">Command help</a></td>
+    </tr>
+    <tr>
+      <td><code>scarf bench test</code></td>
+      <td>Run benchmark regression tests</td>
+      <td><a href="#cmd-bench-test">Command help</a></td>
+    </tr>
+    <tr>
+      <td rowspan="2"><strong>Agent evaluation</strong></td>
+      <td><code>scarf eval</code></td>
+      <td>Evaluate agents on benchmark</td>
+      <td><a href="#group-eval">Go to section</a></td>
+    </tr>
+    <tr>
+      <td><code>scarf eval run</code></td>
+      <td>Run agent evaluation jobs</td>
+      <td><a href="#cmd-eval-run">Command help</a></td>
+    </tr>
+    <tr>
+      <td><strong>Submission validation</strong></td>
+      <td><code>scarf validate</code></td>
+      <td>Validate converted submissions</td>
+      <td><a href="./docs/DEVELOPER.md#cmd-validate">Go to section</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<a id="group-bench"></a>
+
+### 1. `scarf bench` series of commands for operations on the benchmark
+
+THese commands allow you to interact with the benchmark applications, including pulling the latest versions, listing available applications, and running tests. These are mostly for developers and maintainers of the benchmark as well as for users who want to explore the benchmark applications.
+
+```text
+Usage: scarf bench [OPTIONS] <COMMAND>
+
+Commands:
+  pull  Pull the latest (or user specified) version of the benchmark.
+  list  List the application(s) in the benchmark.
+  test  Run regression tests (with `make test`) on the benchmark application(s).
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...  Increase verbosity (-v, -vv, -vvv).
+  -h, --help        Print help
+```
+
+<a id="cmd-bench-pull"></a>
+
+#### `scarf bench pull --help`
+
+Pull the latest (or user specified) version of the benchmark.
+
+```text
+Usage: scarf bench pull [OPTIONS] --dest <DIR>
+
+Options:
+  -d, --dest <DIR>         Path to where the benchmark is to be saved.
+  -v, --verbose...         Increase verbosity (-v, -vv, -vvv).
+      --version <VERSION>  Version of scarfbench to pull.
+  -h, --help               Print help
+```
+
+<a id="cmd-bench-list"></a>
+
+#### `scarf bench list --help`
 
 List the application(s) in the benchmark.
 
-Usage: scarf bench list [OPTIONS] --benchmark-dir <ROOT>
+```text
+Usage: scarf bench list [OPTIONS] --benchmark-dir <BENCHMARK_DIR>
 
 Options:
-      --benchmark-dir <ROOT>    Path to the root of the scarf benchmark.
-  -v, --verbose...     Increase verbosity (-v, -vv, -vvv). If RUST_LOG is set, it takes precedence.
-      --layer <LAYER>  Application layer to list.
-  -h, --help           Print help
+      --benchmark-dir <BENCHMARK_DIR>  Path to the root of the scarf benchmark.
+  -v, --verbose...                     Increase verbosity (-v, -vv, -vvv).
+      --layer <LAYER>                  Application layer to list.
+  -h, --help                           Print help
 ```
 
-This should give you something like below
-```bash
-❯ scarf bench list --benchmark-dir /home/rkrsn/workspace/scarfbench/benchmark --layer business_domain
-┌─────────────────┬──────────────┬───────────┬─────────────────────────────────────────────────────────────────────────────────┐
-│ Layer           ┆ Application  ┆ Framework ┆ Path                                                                            │
-╞═════════════════╪══════════════╪═══════════╪═════════════════════════════════════════════════════════════════════════════════╡
-│ business_domain ┆ cart         ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/cart/jakarta         │
-│ business_domain ┆ cart         ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/cart/quarkus         │
-│ business_domain ┆ cart         ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/cart/spring          │
-│ business_domain ┆ converter    ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/converter/jakarta    │
-│ business_domain ┆ converter    ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/converter/quarkus    │
-│ business_domain ┆ converter    ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/converter/spring     │
-│ business_domain ┆ counter      ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/counter/jakarta      │
-│ business_domain ┆ counter      ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/counter/quarkus      │
-│ business_domain ┆ counter      ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/counter/spring       │
-│ business_domain ┆ helloservice ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/helloservice/jakarta │
-│ business_domain ┆ helloservice ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/helloservice/quarkus │
-│ business_domain ┆ helloservice ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/helloservice/spring  │
-│ business_domain ┆ standalone   ┆ jakarta   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/standalone/jakarta   │
-│ business_domain ┆ standalone   ┆ quarkus   ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/standalone/quarkus   │
-│ business_domain ┆ standalone   ┆ spring    ┆ /home/rkrsn/workspace/scarfbench/benchmark/business_domain/standalone/spring    │
-└─────────────────┴──────────────┴───────────┴─────────────────────────────────────────────────────────────────────────────────┘
-```
+<a id="cmd-bench-test"></a>
 
-### 2. Test Benchmark Layer(s)
-
-You can use the `scarf bench test` command to test specific benchmark layers or the whole benchmark. Here are some examples:
-
-```
-❯ scarf bench test --help
-
- ███████╗  ██████╗  █████╗  ██████╗  ███████╗ ██████╗  ███████╗ ███╗   ██╗  ██████╗ ██╗  ██╗
- ██╔════╝ ██╔════╝ ██╔══██╗ ██╔══██╗ ██╔════╝ ██╔══██╗ ██╔════╝ ████╗  ██║ ██╔════╝ ██║  ██║
- ███████╗ ██║      ███████║ ██████╔╝ █████╗   ██████╔╝ █████╗   ██╔██╗ ██║ ██║      ███████║
- ╚════██║ ██║      ██╔══██║ ██╔══██╗ ██╔══╝   ██╔══██╗ ██╔══╝   ██║╚██╗██║ ██║      ██╔══██║
- ███████║ ╚██████╗ ██║  ██║ ██║  ██║ ██║      ██████╔╝ ███████╗ ██║ ╚████║ ╚██████╗ ██║  ██║
- ╚══════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝      ╚═════╝  ╚══════╝ ╚═╝  ╚═══╝  ╚═════╝ ╚═╝  ╚═╝
+#### `scarf bench test --help`
 
 Run regression tests (with `make test`) on the benchmark application(s).
 
+```text
 Usage: scarf bench test [OPTIONS] --benchmark-dir <DIRECTORY>
 
 Options:
@@ -176,29 +242,74 @@ Options:
       --layer <LAYER>              Application layer to test.
       --app <APPLICATION>          Application to run the test on.
       --dry-run                    Use dry run instead of full run.
+      --logs-dest                  Where to save the logs.
   -h, --help                       Print help
 ```
 
-For example, to test the `persistence` layer:
+<a id="group-eval"></a>
 
-```bash
-❯ scarf bench test --benchmark-dir /home/rkrsn/workspace/scarfbench/benchmark --layer persistence
+### 2. `scarf eval` series of commands for evaluating agents
+
+These are the key evaluation commands that you will use to run and evaluate agents on the benchmark. 
+
+```text
+Usage: scarf eval [OPTIONS] <COMMAND>
+
+Commands:
+  run   Evaluate an agent on Scarfbench
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...  Increase verbosity (-v, -vv, -vvv).
+  -h, --help        Print help
 ```
 
-This will run `make tests` in all the apps in `persistence` layer and provide a summary of the results.
+<a id="cmd-eval-run"></a>
+
+#### `scarf eval run --help`
+
+Run the evaluation of an agent on the benchmark. This expects the agent to be implemented in the `--agent-dir` directory as per the [agent harness specification](./docs/AGENT_HARNESS.md)
+.
+```text
+Usage: scarf eval run [OPTIONS] --benchmark-dir <DIR> --agent-dir <DIR> --source-framework <FRAMEWORK> --target-framework <FRAMEWORK> --eval-out <EVAL_OUT>
+
+Options:
+      --benchmark-dir <DIR>           Path (directory) to the benchmark.
+  -v, --verbose...                    Increase verbosity (-v, -vv, -vvv).
+      --agent-dir <DIR>               Path (directory) to agent implementation harness.
+      --layer <LAYER>                 Application layer to run agent on.
+      --app <APP>                     Application to run the agent on. If layer is specified, this app must lie within that layer.
+      --source-framework <FRAMEWORK>  The source framework for conversion.
+      --target-framework <FRAMEWORK>  The target framework for conversion.
+  -p, --pass-at-k <K>                 Value of K to run for generating an Pass@K value. [default: 1]
+      --eval-out <EVAL_OUT>           Output directory where the agent runs and evaluation output are stored.
+  -j, --jobs <JOBS>                   Number of parallel jobs to run. [default: 1]
+      --prepare-only                  Prepare the evaluation harness to run agents. Think of this as a dry run before actually deploying the agents.
+  -h, --help                          Print help
+```
+
+### Quick examples
 
 ```bash
-┌─────────────────────────────────────────────────────────────────────────────┬─────────┐
-│ Application Path                                                            ┆ Result  │
-╞═════════════════════════════════════════════════════════════════════════════╪═════════╡
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/order/jakarta        ┆ Failure │
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/roster/spring        ┆ Success │
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/order/quarkus        ┆ Failure │
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/roster/quarkus       ┆ Success │
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/roster/jakarta       ┆ Success │
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/address-book/spring  ┆ Success │
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/address-book/quarkus ┆ Success │
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/address-book/jakarta ┆ Success │
-│ /home/rkrsn/workspace/scarfbench/benchmark/persistence/order/spring         ┆ Success │
-└─────────────────────────────────────────────────────────────────────────────┴─────────┘
+# Pull benchmark into a directory
+scarf bench pull --dest /path/to/bench
+
+# List apps in one layer
+scarf bench list --benchmark-dir /path/to/bench --layer persistence
+
+# Run benchmark tests for one layer
+scarf bench test --benchmark-dir /path/to/bench --layer persistence
+
+# Run evaluation
+scarf eval run \
+  --benchmark-dir /path/to/bench \
+  --agent-dir /path/to/agent-harness \
+  --source-framework spring \
+  --target-framework quarkus \
+  --eval-out /path/to/eval-output
+
+# Validate converted submissions (hidden command)
+scarf validate \
+  --conversions-dir /path/to/conversions \
+  --benchmark-dir /path/to/bench
 ```
