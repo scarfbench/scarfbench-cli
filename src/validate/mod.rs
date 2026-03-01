@@ -8,6 +8,7 @@ use owo_colors::OwoColorize;
 use walkdir::WalkDir;
 
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 
@@ -63,22 +64,19 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
         .into_iter()
         .filter_map(Result::ok)
         .filter(|entry| {
-            if !entry.file_type().is_dir() {
-                return false;
-            }
-            let Some(name) = entry
-                .path()
-                .parent()
-                .and_then(|p| p.file_name())
-                .map(|name| name.to_string_lossy())
-            else {
-                return false;
-            };
-            // We want to have exactly five components for valid folders
-            name.split("__").collect::<Vec<_>>().len() == 5
+            // Find the location of the metadata file. This will be our
+            // anchor
+            entry.file_type().is_file()
+                && entry.file_name().to_string_lossy() == "metadata.json"
         })
-        .map(|d| d.into_path())
+        .filter_map(|entry| {
+            Some(entry.path().parent()?.parent()?.to_path_buf())
+        })
+        // De dup
+        .collect::<HashSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
+
     log::debug!("Found {} conversions", dirs.len());
 
     let total = dirs.len();
