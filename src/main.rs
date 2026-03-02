@@ -5,6 +5,7 @@ mod bench;
 mod cli;
 mod eval;
 mod utils;
+mod validate;
 
 fn main() -> Result<()> {
     let cli = cli::Cli::parse();
@@ -13,6 +14,7 @@ fn main() -> Result<()> {
     let code = match cli.command {
         cli::Commands::Bench(cmd) => bench::run(cmd)?,
         cli::Commands::Eval(cmd) => eval::run(cmd)?,
+        cli::Commands::Validate(args) => validate::run(args)?,
     };
     std::process::exit(code);
 }
@@ -25,6 +27,8 @@ fn init_logging(verbose: u8) {
         2 => "debug",
         _ => "trace",
     };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_filter))
-        .init();
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(default_filter),
+    )
+    .init();
 }

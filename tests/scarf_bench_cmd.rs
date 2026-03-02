@@ -67,7 +67,8 @@ fn bench_list_bails_when_a_layer_does_not_exist() {
     );
 
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("this_layer_does_not_exist"),
+        String::from_utf8_lossy(&output.stderr)
+            .contains("this_layer_does_not_exist"),
         "Error message did not include the non-existent layer name"
     );
 }

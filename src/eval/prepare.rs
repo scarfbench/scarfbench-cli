@@ -6,7 +6,9 @@ use std::{
 };
 
 use crate::eval::run::EvalRunArgs;
-use crate::eval::types::{EvalGroup, EvalInstance, EvalKey, EvalLayout, RunMetaData};
+use crate::eval::types::{
+    EvalGroup, EvalInstance, EvalKey, EvalLayout, RunMetaData,
+};
 use anyhow::Result;
 use walkdir::WalkDir;
 
@@ -28,7 +30,9 @@ fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
         .agent_dir
         .file_name()
         .and_then(|f| f.to_str())
-        .ok_or_else(|| anyhow::anyhow!("--agent-dir must be a valid UTF-8 name!"))?
+        .ok_or_else(|| {
+            anyhow::anyhow!("--agent-dir must be a valid UTF-8 name!")
+        })?
         .to_string();
 
     log::debug!("Using agent name: {}", &agent_name);
@@ -122,29 +126,33 @@ fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
                         "Created eval instance directory: {}",
                         eval_instance_dir.display()
                     );
-                }
+                },
                 Err(e) => {
                     anyhow::bail!(
                         "Failed to create eval instance directory {}: {}",
                         eval_instance_dir.display(),
                         e
                     );
-                }
+                },
             }
-            match create_eval_metadata(&eval_instance_dir, &eval_instance_key, &run) {
+            match create_eval_metadata(
+                &eval_instance_dir,
+                &eval_instance_key,
+                &run,
+            ) {
                 Ok(_) => {
                     log::debug!(
                         "Created eval metadata file in: {}",
                         eval_instance_dir.display()
                     );
-                }
+                },
                 Err(e) => {
                     anyhow::bail!(
                         "Failed to create eval metadata file in {}: {}",
                         eval_instance_dir.display(),
                         e
                     );
-                }
+                },
             }
 
             // Create the input, output, and validation directories
@@ -155,14 +163,14 @@ fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
                         "Created input directory: {} and seeded it with the source framework",
                         eval_instance_dir.join("input").display()
                     );
-                }
+                },
                 Err(e) => {
                     anyhow::bail!(
                         "Failed to create input directory {}: {}",
                         eval_instance_dir.join("input").display(),
                         e
                     );
-                }
+                },
             }
             // Copy the app files into the input directory
             copy_app_dir(app_path, &args.source_framework, &eval_input_dir)?;
@@ -174,32 +182,33 @@ fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
                         "Created output directory: {} and seeded it with the source framework",
                         eval_instance_dir.join("output").display()
                     );
-                }
+                },
                 Err(e) => {
                     anyhow::bail!(
                         "Failed to create output directory {}: {}",
                         eval_instance_dir.join("output").display(),
                         e
                     );
-                }
+                },
             }
             copy_app_dir(app_path, &args.source_framework, &eval_output_dir)?;
 
-            let eval_validation_dir: PathBuf = eval_instance_dir.join("validation");
+            let eval_validation_dir: PathBuf =
+                eval_instance_dir.join("validation");
             match create_dir_all(eval_instance_dir.join("validation")) {
                 Ok(_) => {
                     log::debug!(
                         "Created validation directory: {}",
                         eval_validation_dir.display()
                     );
-                }
+                },
                 Err(e) => {
                     anyhow::bail!(
                         "Failed to create validation directory {}: {}",
                         eval_validation_dir.display(),
                         e
                     );
-                }
+                },
             }
 
             // Append the current run information to runs
@@ -219,7 +228,11 @@ fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
     Ok(evals)
 }
 
-fn create_eval_metadata(eval_instance_dir: &Path, eval_key: &EvalKey, run: &u32) -> Result<()> {
+fn create_eval_metadata(
+    eval_instance_dir: &Path,
+    eval_key: &EvalKey,
+    run: &u32,
+) -> Result<()> {
     let metadata: RunMetaData = RunMetaData::new(
         eval_key.agent(),
         eval_key.layer(),
@@ -237,7 +250,11 @@ fn create_eval_metadata(eval_instance_dir: &Path, eval_key: &EvalKey, run: &u32)
     Ok(())
 }
 
-fn copy_app_dir(apps: &Path, source_framework: &String, dest: &Path) -> Result<()> {
+fn copy_app_dir(
+    apps: &Path,
+    source_framework: &String,
+    dest: &Path,
+) -> Result<()> {
     for entry in apps
         .join(source_framework)
         .read_dir()
@@ -246,10 +263,8 @@ fn copy_app_dir(apps: &Path, source_framework: &String, dest: &Path) -> Result<(
         let entry = entry.expect("Failed to read file in app directory");
         log::trace!("Processing entry: {}", entry.path().display());
         let path = entry.path();
-        let file_name = path
-            .file_name()
-            .expect("Failed to get file name")
-            .to_owned();
+        let file_name =
+            path.file_name().expect("Failed to get file name").to_owned();
 
         if matches!(
             &file_name,

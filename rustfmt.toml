@@ -1,0 +1,56 @@
+# -------------------------------
+# Opinionated, clean, diff-friendly rustfmt
+# -------------------------------
+edition = "2024"
+
+# Keep lines readable without going “wrap-crazy”
+max_width = 80
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+
+# Prefer stable, deterministic formatting
+use_small_heuristics = "Max"
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+
+# Imports: keep them clean and grouped well
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+
+# More consistent diffs for function signatures / calls
+fn_params_layout = "Tall"
+fn_call_width = 80
+attr_fn_like_width = 80
+struct_lit_width = 60
+struct_variant_width = 60
+
+# Encourage trailing commas for cleaner diffs
+trailing_comma = "Vertical"
+match_block_trailing_comma = true
+
+# Make comments/docstrings wrap nicely
+wrap_comments = true
+comment_width = 100
+format_code_in_doc_comments = true
+doc_comment_code_block_width = 100
+
+# Match arms: readable, less “everything on one line”
+match_arm_blocks = true
+
+# Normalize and format string literals where appropriate
+format_strings = true
+format_macro_matchers = true
+format_macro_bodies = true
+
+# Keep `where` clauses readable on bigger generics
+where_single_line = false
+
+# Slightly more compact, but still readable
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+# (Optional) If you use cfgs heavily, this helps keep attributes consistent
+normalize_doc_attributes = true
+normalize_comments = true

@@ -100,16 +100,15 @@ pub fn run(mut args: EvalRunArgs) -> anyhow::Result<i32> {
     // If number of jobs is less than 1, set to 1 by default
     match args.jobs {
         j if j < 1 => {
-            log::warn!("Number of jobs cannot be less than 1. Setting to 1 by default.");
+            log::warn!(
+                "Number of jobs cannot be less than 1. Setting to 1 by default."
+            );
             args.jobs = 1;
-        }
+        },
         _ => (),
     }
 
-    log::info!(
-        "Preparing evaluation harness at {}",
-        args.eval_out.display()
-    );
+    log::info!("Preparing evaluation harness at {}", args.eval_out.display());
     let eval_layout: EvalLayout = prepare::prepare_harness(&args)?;
     if args.prepare_only {
         log::debug!("--prepare-only flag is set. Exiting after preparation.");

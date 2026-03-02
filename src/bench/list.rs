@@ -45,11 +45,11 @@ pub fn run(args: BenchListArgs) -> Result<i32> {
         Ok(rows) => {
             // rows is fine, so let's use it!
             println!("{}", tabulate(&header, &rows));
-        }
+        },
         Err(e) => {
             // Something wrong with the results, so log exception.
             log::error!("{e}");
-        }
+        },
     };
     Ok(0)
 }
@@ -65,7 +65,10 @@ fn gen_header() -> [String; 4] {
 }
 
 /// Generate the table rows
-fn gen_rows(base: &PathBuf, bench_root: &PathBuf) -> Result<Vec<[String; 4]>, anyhow::Error> {
+fn gen_rows(
+    base: &PathBuf,
+    bench_root: &PathBuf,
+) -> Result<Vec<[String; 4]>, anyhow::Error> {
     let mut rows: Vec<[String; 4]> = Vec::new();
 
     for entry in WalkDir::new(base) {
@@ -77,10 +80,8 @@ fn gen_rows(base: &PathBuf, bench_root: &PathBuf) -> Result<Vec<[String; 4]>, an
             };
             // Find the relative path to the layer directory
             let rel = leaf.strip_prefix(bench_root)?;
-            let parts: Vec<String> = rel
-                .iter()
-                .map(|p| p.to_string_lossy().into_owned())
-                .collect();
+            let parts: Vec<String> =
+                rel.iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
             if parts.len() != 3 {
                 continue;
@@ -148,10 +149,10 @@ mod tests {
         match _touch_makefile(&bench_root.join("layer/app/framework")) {
             Ok(()) => {
                 log::info!("Created Makefile in layer/app/framework");
-            }
+            },
             Err(e) => {
                 log::error!("Failed to create Makefile: {}", e);
-            }
+            },
         }
 
         // Let's also create another Makefile but now in layer/app.
@@ -159,14 +160,14 @@ mod tests {
         match _touch_makefile(&bench_root.join("layer/app")) {
             Ok(()) => {
                 log::info!("Created Makefile in layer/app");
-            }
+            },
             Err(e) => {
                 log::error!("Failed to create Makefile: {}", e);
-            }
+            },
         }
 
-        let mut rows =
-            gen_rows(&bench_root.join("layer"), &bench_root).expect("gen_rows failed: {}");
+        let mut rows = gen_rows(&bench_root.join("layer"), &bench_root)
+            .expect("gen_rows failed: {}");
 
         // Turns our walkdir can mangle ordering, so we have to manually order them
         rows.sort();
@@ -195,7 +196,8 @@ mod tests {
         _touch_makefile(&bench_root.join("layer1/app1/framework"))?;
         _touch_makefile(&bench_root.join("layer2/app2/framework"))?;
 
-        let mut rows = gen_rows(&base, &bench_root).expect("gen_rows failed: {}");
+        let mut rows =
+            gen_rows(&base, &bench_root).expect("gen_rows failed: {}");
         rows.sort(); // Sort to preserve the row order
 
         assert_eq!(rows.len(), 1);
