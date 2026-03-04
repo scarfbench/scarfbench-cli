@@ -21,7 +21,6 @@ use std::time::Duration;
 use wait_timeout::ChildExt;
 
 use crate::utils::ProgressBar;
-use crate::validate::types::ValidationOutcome;
 
 use aho_corasick::AhoCorasick;
 use regex::Regex;
@@ -62,8 +61,7 @@ enum UiMessage {
 pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     let conversions_dir = args.conversions_dir;
     let dirs: Vec<_> = WalkDir::new(conversions_dir)
-        .min_depth(2)
-        .max_depth(2)
+        .min_depth(1)
         .follow_links(false)
         .into_iter()
         .filter_map(Result::ok)
@@ -74,7 +72,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                 && entry.file_name().to_string_lossy() == "metadata.json"
         })
         .filter_map(|entry| {
-            Some(entry.path().parent()?.parent()?.to_path_buf())
+            Some(entry.path().parent()?.to_path_buf())
         })
         // De dup
         .collect::<HashSet<_>>()
@@ -118,10 +116,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
             &args.benchmark_dir,
             &dir,
             args.timeout,
-        )
-        .with_context(|| {
-            format!("Failed to run make tests on {:?}", dir.display())
-        });
+        );
         match res {
             Ok(_) => {
                 let _ = tx.send(UiMessage::Log(format!(
@@ -160,6 +155,11 @@ fn copy_validation_harness_and_run_make_test(
     let (layer, app, framework) = read_metadata_json(conversions_dir)?;
     let src = benchmark_dir.join(layer).join(app).join(framework);
     let dst = conversions_dir.join("output");
+    println!(
+        "Copying validation harness from {} to {}",
+        src.display(),
+        dst.display()
+    );
     fs::read_dir(&src)?
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -251,9 +251,6 @@ fn copy_validation_harness_and_run_make_test(
 }
 
 fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
-    use aho_corasick::AhoCorasick;
-    use regex::Regex;
-
     let log = fs::read_to_string(log_path).with_context(|| {
         format!("failed to read run log at {}", log_path.display())
     })?;

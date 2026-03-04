@@ -26,9 +26,8 @@ pub enum Framework {
 pub(super) enum ValidationOutcome {
     True,
     False,
-    Unk,
     #[default]
-    NA,
+    Unk,
 }
 /// Captures the expected schema of the metadata JSON file
 #[derive(Debug, Clone, Serialize, Builder, Deserialize)]
