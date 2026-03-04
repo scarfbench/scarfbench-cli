@@ -21,10 +21,17 @@ pub enum Framework {
     Quarkus,
     Jakarta,
 }
-
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub(super) enum ValidationOutcome {
+    True,
+    False,
+    Unk,
+    #[default]
+    NA,
+}
 /// Captures the expected schema of the metadata JSON file
 #[derive(Debug, Clone, Serialize, Builder, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Metadata {
     /// The status of the runs
     pub status: Status,
@@ -40,4 +47,13 @@ pub struct Metadata {
     pub source_framework: Framework,
     /// The target framework
     pub target_framework: Framework,
+    /// Compile status
+    #[serde(default)]
+    pub compile_ok: ValidationOutcome,
+    /// Compile status
+    #[serde(default)]
+    pub deploy_ok: ValidationOutcome,
+    /// Compile status
+    #[serde(default)]
+    pub tests_pass_ok: ValidationOutcome,
 }

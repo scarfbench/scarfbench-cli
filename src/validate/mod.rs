@@ -11,8 +11,8 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
-
 use std::io::IsTerminal;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -21,6 +21,10 @@ use std::time::Duration;
 use wait_timeout::ChildExt;
 
 use crate::utils::ProgressBar;
+use crate::validate::types::ValidationOutcome;
+
+use aho_corasick::AhoCorasick;
+use regex::Regex;
 
 #[derive(Args, Debug)]
 pub struct ValidateArgs {
@@ -220,7 +224,7 @@ fn copy_validation_harness_and_run_make_test(
     // Wait for the command to timeout or succeed
     match child
         .wait_timeout(timeout)
-        .context("couldn't spawn chile with wait_timeout")?
+        .context("couldn't spawn child with wait_timeout")?
     {
         Some(status) if status.success() => Ok(()),
         Some(status) => Err(anyhow!(
@@ -240,8 +244,101 @@ fn copy_validation_harness_and_run_make_test(
         },
     }?;
 
+    parse_run_log_and_update_metadata(&log_path)?;
+
+    // Look at the log file and determine whether the run passed, or at what stage it failed                                                                                                                                                                                                                                                                                                                v vcvf
     Ok(())
 }
+
+fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
+    use aho_corasick::AhoCorasick;
+    use regex::Regex;
+
+    let log = fs::read_to_string(log_path).with_context(|| {
+        format!("failed to read run log at {}", log_path.display())
+    })?;
+
+    let metadata_path = log_path
+        .parent()
+        .context("log path has no parent directory")?
+        .join("metadata.json");
+
+    let mut metadata: types::Metadata = serde_json::from_reader(
+        File::open(&metadata_path).with_context(|| {
+            format!(
+                "failed to open metadata JSON at {}",
+                metadata_path.display()
+            )
+        })?,
+    )
+    .with_context(|| {
+        format!("failed to parse metadata JSON at {}", metadata_path.display())
+    })?;
+
+    let compile_fail = AhoCorasick::new([
+        "BUILD FAILURE",
+        "COMPILATION FAILURE",
+        "Compilation failure",
+        "No plugin found for prefix",
+    ])?;
+    let compile_success =
+        AhoCorasick::new(["BUILD SUCCESS", "BUILD SUCCESSFUL"])?;
+
+    let deploy_fail = AhoCorasick::new([
+        "Container exited before",
+        "Failed to connect to localhost",
+        "container is not running",
+        "make: *** [Makefile:",
+    ])?;
+    let deploy_success = AhoCorasick::new(["Application started and ready"])?;
+
+    let test_pass_fail_pattern =
+        Regex::new(r"(\d+)\s+failed,\s+(\d+)\s+passed")?;
+
+    metadata.compile_ok =
+        match (compile_success.is_match(&log), compile_fail.is_match(&log)) {
+            (_, true) => types::ValidationOutcome::False,
+            (true, false) => types::ValidationOutcome::True,
+            _ => types::ValidationOutcome::Unk,
+        };
+
+    metadata.deploy_ok =
+        match (deploy_success.is_match(&log), deploy_fail.is_match(&log)) {
+            (true, false) => types::ValidationOutcome::True,
+            (_, true) => types::ValidationOutcome::False,
+            _ => types::ValidationOutcome::Unk,
+        };
+
+    metadata.tests_pass_ok =
+        match test_pass_fail_pattern.captures_iter(&log).last() {
+            Some(c) => {
+                let failed: usize = c[1].parse().unwrap_or(0);
+                let passed: usize = c[2].parse().unwrap_or(0);
+                if failed == 0 && passed > 0 {
+                    types::ValidationOutcome::True
+                } else if failed > 0 {
+                    types::ValidationOutcome::False
+                } else {
+                    types::ValidationOutcome::Unk
+                }
+            },
+            None => types::ValidationOutcome::Unk,
+        };
+
+    let mut metadata_file =
+        File::create(&metadata_path).with_context(|| {
+            format!(
+                "failed to open metadata JSON for writing at {}",
+                metadata_path.display()
+            )
+        })?;
+    metadata_file
+        .write_all(serde_json::to_string_pretty(&metadata)?.as_bytes())?;
+
+    Ok(())
+}
+
+/// Parse the run.log and categorize the errors or pass rates
 
 /// Read the metadata.json file. This will give us the layer name, the app name, and the target framework
 ///

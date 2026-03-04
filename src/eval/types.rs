@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, default, path::PathBuf};
 
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator};
 use serde::{Deserialize, Serialize};
@@ -196,6 +196,14 @@ where
 }
 
 /// This is to hold the run metadata for saving in the evals folder later
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub(super) enum TriState {
+    True,
+    False,
+    #[default]
+    Unk,
+}
 #[derive(Serialize, Deserialize)]
 pub(super) struct RunMetaData {
     agent: String,
@@ -205,6 +213,12 @@ pub(super) struct RunMetaData {
     repeat: u32,
     source_framework: String,
     target_framework: String,
+    #[serde(default)]
+    compile_ok: TriState,
+    #[serde(default)]
+    deploy_ok: TriState,
+    #[serde(default)]
+    tests_pass_ok: TriState,
 }
 impl RunMetaData {
     pub(super) fn new(
@@ -224,6 +238,9 @@ impl RunMetaData {
             repeat: repeat.into(),
             source_framework: source_framework.into(),
             target_framework: target_framework.into(),
+            compile_ok: TriState::Unk,
+            deploy_ok: TriState::Unk,
+            tests_pass_ok: TriState::Unk,
         }
     }
     pub(super) fn source_framework(&self) -> String {
