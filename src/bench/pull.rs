@@ -1,4 +1,7 @@
-use crate::utils::{ProgressBar, ProgressReader};
+use crate::utils::{
+    get_or_create_and_get_scarfbench_home_dir,
+    progress_bar::{ProgressBar, ProgressReader},
+};
 use anyhow::{Context, Result};
 use bon::Builder;
 use clap::Args;
@@ -17,10 +20,10 @@ pub struct BenchPullArgs {
     #[arg(
         short,
         long,
-        help = "Path to where the benchmark is to be saved.",
+        help = "Path to where the benchmark is to be saved. Defaults to ~/.scarfbench/benchmark",
         value_name = "DIR"
     )]
-    pub dest: PathBuf,
+    pub benchmark_dest: Option<PathBuf>,
 
     #[arg(
         long,
@@ -33,7 +36,9 @@ pub struct BenchPullArgs {
 #[derive(Debug, Serialize, Deserialize)]
 struct Release {
     assets: Vec<Asset>,
+    tag_name: String,
 }
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Asset {
     name: String,
@@ -54,6 +59,7 @@ pub struct PullScarfBench {
 }
 
 impl PullScarfBench {
+    // These are for my CI ghactions builds...
     fn github_token() -> Option<String> {
         std::env::var("SCARF_BENCH_GITHUB_TOKEN")
             .ok()
@@ -65,7 +71,7 @@ impl PullScarfBench {
             })
     }
 
-    fn maybe_auth(
+    fn authorize_me_maybe(
         request: RequestBuilder,
         token: Option<&str>,
     ) -> RequestBuilder {
@@ -92,7 +98,7 @@ impl PullScarfBench {
         log::info!("Downloading from {api_url}");
 
         // Get releases
-        let release_response = Self::maybe_auth(client.get(&api_url), token.as_deref())
+        let release_response = Self::authorize_me_maybe(client.get(&api_url), token.as_deref())
             .header("User-Agent", "scarf")
             .send()
             .with_context(|| format!("Unable to fetch the release metadata from {api_url}"))?
@@ -126,7 +132,7 @@ impl PullScarfBench {
             )
         })?;
 
-        let response = Self::maybe_auth(client.get(&asset.browser_download_url), token.as_deref())
+        let response = Self::authorize_me_maybe(client.get(&asset.browser_download_url), token.as_deref())
             .send()
             .with_context(|| {
                 format!(
@@ -148,11 +154,11 @@ impl PullScarfBench {
 
         // Set up terminal to tell kdam if we are in a active terminal (for colors and ansi stuff)
         term::init(std::io::stderr().is_terminal());
-        term::hide_cursor()?;
 
         // initialize our progress bar
         let pb = total_size.progress("Downloading scarfbench", "B");
 
+        // Here we are encapsulating the response stream by overlaying it with the progressbar
         let pr =
             ProgressReader::new(BufReader::new(response), pb, Some(total_size));
 
@@ -162,7 +168,10 @@ impl PullScarfBench {
         archive.unpack(&self.dest_dir).with_context(|| {
             format!("Failed to extract into {}", self.dest_dir.display())
         })?;
-        term::show_cursor()?;
+        log::info!(
+            "Benchmark successfully downloaded to {}",
+            &self.dest_dir.join("benchmark").display()
+        );
         Ok(0)
     }
 }
@@ -171,7 +180,9 @@ impl PullScarfBench {
 pub fn run(bench_pull_args: BenchPullArgs) -> Result<i32> {
     PullScarfBench::builder()
         .maybe_version(bench_pull_args.version)
-        .dest_dir(bench_pull_args.dest)
+        .dest_dir(bench_pull_args.benchmark_dest.unwrap_or_else(|| {
+            get_or_create_and_get_scarfbench_home_dir().unwrap()
+        }))
         .build()
         .exec()
 }

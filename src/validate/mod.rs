@@ -20,7 +20,7 @@ use std::thread;
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
-use crate::utils::ProgressBar;
+use crate::utils::progress_bar::ProgressBar;
 
 use aho_corasick::AhoCorasick;
 use regex::Regex;
@@ -120,19 +120,23 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
         match res {
             Ok(_) => {
                 let _ = tx.send(UiMessage::Log(format!(
-                    "{}",
+                    "{}\t{}",
+                    format!("{}", "[INFO]".to_string()).bold().bright_cyan(),
                     format!(
-                        "[INFO] Successfully completed validations on {}",
+                        "Successfully completed validations on {}",
                         dir.to_string_lossy()
                     )
                     .bold()
-                    .bright_cyan()
+                    .bright_white()
                 )));
             },
             Err(e) => {
                 let _ = tx.send(UiMessage::Log(format!(
-                    "{}",
-                    format!("[ERROR] {}", e).bold().bright_magenta()
+                    "{}\t{}",
+                    format!("{}", "[ERROR]".to_string())
+                        .bold()
+                        .bright_magenta(),
+                    format!("{}", e).bold().bright_magenta()
                 )));
             },
         }
@@ -195,7 +199,6 @@ fn copy_validation_harness_and_run_make_test(
         });
     // --- Now we will run make test ---
     let timeout = Duration::from_secs(timeout_in_minutes * 60);
-
     let log_dir = conversions_dir.join("validation");
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("Failed to create log dir {:?}", log_dir))?;
@@ -226,25 +229,16 @@ fn copy_validation_harness_and_run_make_test(
         .wait_timeout(timeout)
         .context("couldn't spawn child with wait_timeout")?
     {
-        Some(status) if status.success() => Ok(()),
-        Some(status) => Err(anyhow!(
-            "make tests in {} failed with {:?}",
-            &dst.display(),
-            status
-        )),
+        Some(_) => {
+            parse_run_log_and_update_metadata(&log_path)?;
+        },
         None => {
             // Kill the process because we didn't get a status back...
             child.kill()?;
             child.wait()?; // Wait for the process to finish killing
-            Err(anyhow::anyhow!(
-                "make tests timed out after {:?} in {}",
-                timeout,
-                conversions_dir.display()
-            ))
+            parse_run_log_and_update_metadata(&log_path)?;
         },
-    }?;
-
-    parse_run_log_and_update_metadata(&log_path)?;
+    };
 
     // Look at the log file and determine whether the run passed, or at what stage it failed                                                                                                                                                                                                                                                                                                                v vcvf
     Ok(())
@@ -254,8 +248,9 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     let log = fs::read_to_string(log_path).with_context(|| {
         format!("failed to read run log at {}", log_path.display())
     })?;
-
     let metadata_path = log_path
+        .parent()
+        .unwrap()
         .parent()
         .context("log path has no parent directory")?
         .join("metadata.json");
@@ -283,6 +278,7 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
 
     let deploy_fail = AhoCorasick::new([
         "Container exited before",
+        "[ERROR] Container exited before startup success:",
         "Failed to connect to localhost",
         "container is not running",
         "make: *** [Makefile:",

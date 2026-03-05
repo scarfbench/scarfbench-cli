@@ -1,99 +1,9 @@
-use std::io::{self, BufRead, Read};
+pub mod progress_bar;
 
-use kdam::{BarExt, Column, RichProgress, Spinner, tqdm};
+use anyhow::Result;
 use owo_colors::OwoColorize;
-use std::io::{Error, ErrorKind, Result};
+use std::path::PathBuf;
 
-pub struct ProgressReader<R: Read> {
-    /// Anything that has a read() method—a file, a network stream, anything...
-    inner: R,
-    /// kdam's progress bar
-    pb: RichProgress,
-    /// Total Size
-    total: Option<usize>,
-}
-impl<R: Read> ProgressReader<R> {
-    pub fn new(inner: R, pb: RichProgress, total: Option<usize>) -> Self {
-        Self { inner, pb, total }
-    }
-}
-impl<R: Read> Read for ProgressReader<R> {
-    /// When someone calls this wrapper's read, do the following:
-    /// 1. Forward that to the inner reader
-    /// 2. Send the count of bytes read to the progress bar from kdam
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let bytes_read = self.inner.read(buf)?;
-        if bytes_read > 0 {
-            self.pb
-                .update(bytes_read)
-                .map_err(|e| Error::new(ErrorKind::Other, e))?;
-        }
-        Result::Ok(bytes_read)
-    }
-}
-impl<R: BufRead> BufRead for ProgressReader<R> {
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        self.inner.fill_buf()
-    }
-
-    fn consume(&mut self, amt: usize) {
-        // Important: count bytes that are consumed from the buffer as "read"
-        if amt > 0 {
-            // `kdam` update returns a Result, but BufRead::consume can't.
-            // Best effort: ignore error or store it somewhere.
-            let _ = self.pb.update(amt);
-        }
-        self.inner.consume(amt);
-    }
-}
-impl<R: Read> Drop for ProgressReader<R> {
-    fn drop(&mut self) {
-        if let Some(total) = self.total {
-            let _ = self.pb.update_to(total);
-        }
-    }
-}
-pub trait ProgressBar {
-    fn progress(
-        self,
-        lable: impl Into<String>,
-        unit: impl Into<String>,
-    ) -> RichProgress;
-}
-impl ProgressBar for usize {
-    fn progress(
-        self,
-        lable: impl Into<String>,
-        unit: impl Into<String>,
-    ) -> RichProgress {
-        RichProgress::new(
-            tqdm!(
-                total = self,
-                unit_scale = true,
-                unit_divisor = 1024,
-                unit = unit.into()
-            ),
-            vec![
-                Column::Spinner(Spinner::new(
-                    &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-                    80.0,
-                    1.0,
-                )),
-                Column::Text(
-                    format!("[bold blue] {} :: ", lable.into()).to_owned(),
-                ),
-                Column::Animation,
-                Column::Percentage(1),
-                Column::Text("•".to_owned()),
-                Column::CountTotal,
-                Column::Text("•".to_owned()),
-                Column::Rate,
-                Column::Text("•".to_owned()),
-                Column::RemainingTime,
-            ],
-        )
-    }
-}
 pub(crate) fn logo() -> String {
     format!(
         "\x1b[1m\x1b[31m{}\x1b[0m",
@@ -107,4 +17,45 @@ pub(crate) fn logo() -> String {
             .bold()
             .red()
     )
+}
+
+/// This will create a `.scarfbench` directory at $HOME wherein we have two subfolders
+/// ├── benchmarks/
+/// └── runs/
+///     ├── 2026-03-04T18-22-11Z/
+///     │   ├── eval_out/           # what I am currently call eval_out
+///     │   └── results.json        # a speculative placeholder to put leaderboard (might remove this later)
+pub(crate) fn get_or_create_and_get_scarfbench_home_dir() -> Result<PathBuf> {
+    // Find the user home directory and create a directory called .scarfbench there it if doesn't exist.
+    // if it exists, then just return that directory
+    let scarfbench_home_dir = dirs::home_dir()
+        .expect("Unable to find home directory")
+        .join(".scarfbench");
+
+    // It doesnt seem to exist, so create it
+    if !scarfbench_home_dir.exists() {
+        log::debug!(
+            "Creating Scarfbench home directory at {}",
+            scarfbench_home_dir.to_string_lossy()
+        );
+        // Create the base directory at ~/.scarfbench
+        std::fs::create_dir_all(&scarfbench_home_dir).expect(
+            "Unable to create scarfbench home directory at ~/.scarfbench",
+        );
+        //
+        vec!["benchmark", "evals"]
+            .into_iter()
+            .map(|p| scarfbench_home_dir.join(p))
+            .try_for_each(std::fs::create_dir_all)?;
+    }
+    Ok(scarfbench_home_dir)
+}
+
+/// This helper will give us the benchmark dirs
+#[allow(unused)]
+pub(crate) fn get_default_benchmark_dir() -> Result<PathBuf> {
+    Ok(dirs::home_dir()
+        .expect("Unable to find home directory")
+        .join(".scarfbench")
+        .join("benchmarks"))
 }

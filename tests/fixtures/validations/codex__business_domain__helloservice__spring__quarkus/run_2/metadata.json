@@ -1,9 +1,12 @@
 {
-  "agent": "codex",
-  "layer": "business_domain",
-  "app": "helloservice",
   "status": "PREPARED",
+  "agent": "codex",
+  "app": "helloservice",
+  "layer": "business_domain",
   "repeat": 2,
   "source_framework": "spring",
-  "target_framework": "quarkus"
+  "target_framework": "quarkus",
+  "compile_ok": "UNK",
+  "deploy_ok": "FALSE",
+  "tests_pass_ok": "UNK"
 }
