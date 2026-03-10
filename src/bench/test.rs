@@ -1,7 +1,13 @@
+use crate::utils::get_or_create_and_get_scarfbench_home_dir;
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use clap::{ArgAction, Args};
 use rayon::prelude::*;
-use std::{path::PathBuf, process::Command, sync::mpsc};
+use serde::{Deserialize, Serialize};
+use std::process::{Command, Stdio};
+use std::time::Duration;
+use std::{fs::OpenOptions, io::Write, path::PathBuf, sync::mpsc};
+use wait_timeout::ChildExt;
 use walkdir::WalkDir;
 
 #[derive(Args, Debug)]
@@ -35,20 +41,13 @@ pub struct BenchTestArgs {
 }
 
 /// Create a container to hold command run result
-#[derive(Clone)]
-struct RunResult {
-    dir: PathBuf,
-    ok: bool,
-    stdout: String,
-    stderr: String,
-}
-impl RunResult {
-    fn stdout(&self) -> &String {
-        &self.stdout
-    }
-    fn stderr(&self) -> &String {
-        &self.stderr
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RunResult {
+    pub timestamp: DateTime<Utc>,
+    pub path: PathBuf,
+    pub ok: bool,
+    pub stdout: String,
+    pub stderr: String,
 }
 
 /// Run the make -n test command on the makefile in the provided directory
@@ -60,25 +59,48 @@ fn run_makefile(path: &PathBuf, dry_run: bool) -> Result<RunResult> {
             path.display()
         ));
     }
-
-    let mut cmd: Command = Command::new("make");
+    let mut cmd = Command::new("make");
 
     if dry_run {
         cmd.arg("-n");
     }
 
-    cmd.arg("test");
+    let mut child = cmd
+        .arg("test")
+        .current_dir(path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
 
-    let output = cmd.current_dir(path).output().with_context(|| {
-        format!("Failed to execute 'make [-n] test' in {}", path.display())
-    })?;
+    // This is the key part - use timeout with 10 minutes (600 seconds)
+    let dur = Duration::from_secs(600); // 10 minutes in seconds
 
-    Ok(RunResult {
-        dir: path.to_path_buf(),
-        ok: output.status.success(),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-    })
+    // Wiat for the command to timeout (or succeed)
+
+    match child.wait_timeout(dur)? {
+        Some(_) => {
+            // Command completed within timeout
+            let output = child.wait_with_output()?;
+            Ok(RunResult {
+                timestamp: Utc::now(),
+                path: path.clone(),
+                ok: output.status.success(),
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            })
+        },
+        None => {
+            child.kill()?;
+            let output = child.wait_with_output()?;
+            Ok(RunResult {
+                timestamp: Utc::now(),
+                path: path.clone(),
+                ok: false,
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            })
+        },
+    }
 }
 
 /// The test subcommand that runs make test on all the applications to ensure they work as expected
@@ -167,18 +189,16 @@ pub fn run(args: BenchTestArgs) -> Result<i32> {
     // a tx (a transmitter of its own to the common channel) and the reference to the dir to do its work
     app_dirs.par_iter().for_each_with(tx, |tx, dir| {
         // Each worker does its job (i.e., run the makefile and return the result as RunResult)
-        log::info!("Running makefile test in directory: {}", dir.display());
         let result = run_makefile(dir, args.dry_run);
-        log::info!(
-            "Completed makefile test in directory: {}.\nStd out: {}\nStderr: {}",
-            dir.display(),
-            result.as_ref().unwrap().stdout().to_string(),
-            result.as_ref().unwrap().stderr().to_string(),
-        );
+        log::info!("Completed makefile test in directory: {}.", dir.display(),);
         // Now, clone into an owned directory (using to_path_buf) that each of the worker is
         // using and send that back to the receiver along with the ownership of the result.
         let _ = tx.send((dir.to_path_buf(), result));
     });
+    let log_dir = get_or_create_and_get_scarfbench_home_dir()?.join("logs");
+    let log_file = log_dir
+        .join(format!("benchtest.logs.{}.jsonl", Utc::now().to_rfc3339()));
+    // Open a log file to store results
 
     let mut results: Vec<[String; 2]> = Vec::new();
     //              Only iterate as many times as we have directories
@@ -186,35 +206,40 @@ pub fn run(args: BenchTestArgs) -> Result<i32> {
     //                                       ▼
     //                             |```````````````````|
     // for (dir, res) in rx.iter().take(app_dirs.len()) {
+
     for (dir, res) in rx.iter() {
+        let mut file =
+            OpenOptions::new().create(true).append(true).open(&log_file)?;
         match res {
-            Ok(res) if res.ok => {
-                results.push([
-                    dir.to_string_lossy().into_owned(),
-                    "Success".to_string(),
-                ]);
-                log::info!(
-                    "Makefile test in {} succeeded. Output:\n{}",
-                    res.dir.display(),
-                    res.stdout
-                );
-            },
             Ok(res) => {
+                let status = if res.ok { "Success" } else { "Failure" };
+
                 results.push([
                     dir.to_string_lossy().into_owned(),
-                    "Failure".to_string(),
+                    status.to_string(),
                 ]);
-                log::warn!(
-                    "Makefile test in {} failed. Stderr:\n{}",
-                    res.dir.display(),
-                    res.stderr
-                );
+
+                if res.ok {
+                    log::info!(
+                        "Makefile test in {} succeeded",
+                        res.path.display()
+                    );
+                } else {
+                    log::warn!(
+                        "Makefile test in {} failed",
+                        res.path.display()
+                    );
+                }
+
+                let jsonl = serde_json::to_string(&res)?;
+                writeln!(file, "{jsonl}")?;
             },
             Err(e) => {
                 results.push([
                     dir.to_string_lossy().into_owned(),
                     "Error".to_string(),
                 ]);
+
                 log::error!(
                     "Makefile test in {} encountered an error: {}",
                     dir.display(),
@@ -222,6 +247,7 @@ pub fn run(args: BenchTestArgs) -> Result<i32> {
                 );
             },
         }
+        file.flush()?;
     }
 
     let header: [String; 2] =
@@ -265,7 +291,7 @@ mod tests {
             run_makefile(&app_dir, false).expect("Failed to run the makefile");
 
         // Validate the RunResult captures the makefile directory correctly
-        assert_eq!(result.dir, app_dir);
+        assert_eq!(result.path, app_dir);
 
         // The output must be okay
         assert!(result.ok);

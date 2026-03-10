@@ -33,29 +33,25 @@ pub(crate) fn get_or_create_and_get_scarfbench_home_dir() -> Result<PathBuf> {
         .join(".scarfbench");
 
     // It doesnt seem to exist, so create it
-    if !scarfbench_home_dir.exists() {
-        log::debug!(
-            "Creating Scarfbench home directory at {}",
-            scarfbench_home_dir.to_string_lossy()
-        );
-        // Create the base directory at ~/.scarfbench
-        std::fs::create_dir_all(&scarfbench_home_dir).expect(
-            "Unable to create scarfbench home directory at ~/.scarfbench",
-        );
-        //
-        vec!["benchmark", "evals"]
-            .into_iter()
-            .map(|p| scarfbench_home_dir.join(p))
-            .try_for_each(std::fs::create_dir_all)?;
-    }
+    // if !scarfbench_home_dir.exists() {
+    log::debug!(
+        "Creating Scarfbench home directory at {}",
+        scarfbench_home_dir.to_string_lossy()
+    );
+    // Create the base directory at ~/.scarfbench
+    std::fs::create_dir_all(&scarfbench_home_dir)
+        .expect("Unable to create scarfbench home directory at ~/.scarfbench");
+    //
+    vec!["benchmark", "evals", "logs"]
+        .into_iter()
+        .map(|p| scarfbench_home_dir.join(p))
+        .try_for_each(std::fs::create_dir_all)?;
+    // }
     Ok(scarfbench_home_dir)
 }
 
-/// This helper will give us the benchmark dirs
+/// Here's where we'll save the logs
 #[allow(unused)]
-pub(crate) fn get_default_benchmark_dir() -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .expect("Unable to find home directory")
-        .join(".scarfbench")
-        .join("benchmarks"))
+pub(crate) fn get_logs_dir() -> Result<PathBuf> {
+    Ok(get_or_create_and_get_scarfbench_home_dir()?.join("logs"))
 }

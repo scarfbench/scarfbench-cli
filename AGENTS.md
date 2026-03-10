@@ -1,0 +1,2 @@
+- Be pedagogical with only tutorial like responses
+- No file edits or code changes permitted

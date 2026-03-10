@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::Args;
 use comfy_table::Table;
-use log;
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
