@@ -54,5 +54,5 @@ pub struct Metadata {
     pub deploy_ok: ValidationOutcome,
     /// Compile status
     #[serde(default)]
-    pub tests_pass_ok: ValidationOutcome,
+    pub test_pass_percent: String,
 }

@@ -240,10 +240,10 @@ fn copy_validation_harness_and_run_make_test(
         },
     };
 
-    // Look at the log file and determine whether the run passed, or at what stage it failed                                                                                                                                                                                                                                                                                                                v vcvf
     Ok(())
 }
 
+/// Look at the log file and determine whether the run passed, or at what stage it failed
 fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     let log = fs::read_to_string(log_path).with_context(|| {
         format!("failed to read run log at {}", log_path.display())
@@ -302,20 +302,20 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
             _ => types::ValidationOutcome::Unk,
         };
 
-    metadata.tests_pass_ok =
+    metadata.test_pass_percent =
         match test_pass_fail_pattern.captures_iter(&log).last() {
             Some(c) => {
-                let failed: usize = c[1].parse().unwrap_or(0);
-                let passed: usize = c[2].parse().unwrap_or(0);
-                if failed == 0 && passed > 0 {
-                    types::ValidationOutcome::True
-                } else if failed > 0 {
-                    types::ValidationOutcome::False
-                } else {
-                    types::ValidationOutcome::Unk
-                }
+                let failed: f64 = c[1].parse().unwrap_or(0.0);
+                let passed: f64 = c[2].parse().unwrap_or(0.0);
+                let frac: f64 = passed / (passed + failed) * 100.00;
+                format!(
+                    "{} out of {} tests passed ({}%)",
+                    failed,
+                    passed,
+                    frac.round()
+                )
             },
-            None => types::ValidationOutcome::Unk,
+            None => String::from("UNK"),
         };
 
     let mut metadata_file =

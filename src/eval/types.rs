@@ -204,6 +204,10 @@ pub(super) enum TriState {
     #[default]
     Unk,
 }
+#[allow(non_snake_case)]
+fn UNK() -> String {
+    String::from("UNK")
+}
 #[derive(Serialize, Deserialize)]
 pub(super) struct RunMetaData {
     agent: String,
@@ -217,8 +221,8 @@ pub(super) struct RunMetaData {
     compile_ok: TriState,
     #[serde(default)]
     deploy_ok: TriState,
-    #[serde(default)]
-    tests_pass_ok: TriState,
+    #[serde(default = "UNK")]
+    test_pass_percent: String,
 }
 impl RunMetaData {
     pub(super) fn new(
@@ -240,7 +244,7 @@ impl RunMetaData {
             target_framework: target_framework.into(),
             compile_ok: TriState::Unk,
             deploy_ok: TriState::Unk,
-            tests_pass_ok: TriState::Unk,
+            test_pass_percent: UNK(),
         }
     }
     pub(super) fn source_framework(&self) -> String {
