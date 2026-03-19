@@ -30,8 +30,11 @@ pub struct ValidateArgs {
     #[arg(long, help = "The path to where the agentic conversions are stored")]
     pub conversions_dir: PathBuf,
 
-    #[arg(long, help = "The path where the benchmark directory is stored")]
-    pub benchmark_dir: PathBuf,
+    #[arg(
+        long,
+        help = "The path where the validation harness directory is stored"
+    )]
+    pub validations_dir: PathBuf,
 
     #[arg(
         long,
@@ -90,7 +93,6 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     let tui = thread::spawn(move || -> anyhow::Result<()> {
         // Set up my terminal
         term::init(std::io::stderr().is_terminal());
-        term::hide_cursor()?;
 
         // initialize our progress bar
         let mut pb = total.progress("Evaluating Conversions", "Solutions");
@@ -106,14 +108,14 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
             }
         }
         eprint!(""); // GIve ourselves one line after the progress bar in case
-        term::show_cursor()?;
+
         Ok(())
     });
 
     // Dispatch parallel calls (one for each directory I found above)
     dirs.par_iter().for_each_with(tx.clone(), |tx, dir| {
         let res = copy_validation_harness_and_run_make_test(
-            &args.benchmark_dir,
+            &args.validations_dir,
             &dir,
             args.timeout,
         );
@@ -151,19 +153,14 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 
 /// Run `make test` on the deployed directory
 fn copy_validation_harness_and_run_make_test(
-    benchmark_dir: &PathBuf,
+    validations_dir: &PathBuf,
     conversions_dir: &PathBuf,
     timeout_in_minutes: u64,
 ) -> anyhow::Result<()> {
     // --- First we will copy over the test harness from the benchmark directory ---
     let (layer, app, framework) = read_metadata_json(conversions_dir)?;
-    let src = benchmark_dir.join(layer).join(app).join(framework);
+    let src = validations_dir.join(layer).join(app).join(framework);
     let dst = conversions_dir.join("output");
-    println!(
-        "Copying validation harness from {} to {}",
-        src.display(),
-        dst.display()
-    );
     fs::read_dir(&src)?
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -285,9 +282,6 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     ])?;
     let deploy_success = AhoCorasick::new(["Application started and ready"])?;
 
-    let test_pass_fail_pattern =
-        Regex::new(r"(\d+)\s+failed,\s+(\d+)\s+passed")?;
-
     metadata.compile_ok =
         match (compile_success.is_match(&log), compile_fail.is_match(&log)) {
             (_, true) => types::ValidationOutcome::False,
@@ -302,22 +296,26 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
             _ => types::ValidationOutcome::Unk,
         };
 
-    metadata.test_pass_percent =
-        match test_pass_fail_pattern.captures_iter(&log).last() {
-            Some(c) => {
-                let failed: f64 = c[1].parse().unwrap_or(0.0);
-                let passed: f64 = c[2].parse().unwrap_or(0.0);
-                let frac: f64 = passed / (passed + failed) * 100.00;
-                format!(
-                    "{} out of {} tests passed ({}%)",
-                    failed,
-                    passed,
-                    frac.round()
-                )
-            },
-            None => String::from("UNK"),
-        };
+    let failed_pattern = Regex::new(r"(\d+)\s+failed")?;
+    let passed_pattern = Regex::new(r"(\d+)\s+passed")?;
 
+    let failed: f64 = failed_pattern
+        .captures(&log)
+        .and_then(|c| c[1].parse().ok())
+        .unwrap_or(0.0);
+
+    let passed: f64 = passed_pattern
+        .captures(&log)
+        .and_then(|c| c[1].parse().ok())
+        .unwrap_or(0.0);
+
+    let total = passed + failed;
+    metadata.test_pass_percent = if total == 0.0 {
+        String::from("UNK")
+    } else {
+        let frac = (passed / total * 100.0 * 100.0).round() / 100.0;
+        format!("{} out of {} tests passed ({}%)", passed, total, frac)
+    };
     let mut metadata_file =
         File::create(&metadata_path).with_context(|| {
             format!(
