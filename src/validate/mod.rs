@@ -35,7 +35,7 @@ pub struct ValidateArgs {
 
     #[arg(
         long,
-        default_value_t = 5,
+        default_value_t = 10,
         help = "How much time before we hit evaluation timeout (minutes)."
     )]
     pub timeout: u64,
@@ -282,41 +282,97 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
         "Failed to connect to localhost",
         "container is not running",
         "make: *** [Makefile:",
+        "make: *** [up] Error",
     ])?;
-    let deploy_success = AhoCorasick::new(["Application started and ready"])?;
+    let deploy_success = AhoCorasick::new([
+        "Application started and ready",
+        "application started and ready",
+        "Quarkus application started and ready",
+    ])?;
 
     let test_pass_fail_pattern =
         Regex::new(r"(\d+)\s+failed,\s+(\d+)\s+passed")?;
 
-    metadata.compile_ok =
+    let compile_outcome =
         match (compile_success.is_match(&log), compile_fail.is_match(&log)) {
             (_, true) => types::ValidationOutcome::False,
             (true, false) => types::ValidationOutcome::True,
             _ => types::ValidationOutcome::Unk,
         };
 
-    metadata.deploy_ok =
+    let deploy_outcome =
         match (deploy_success.is_match(&log), deploy_fail.is_match(&log)) {
             (true, false) => types::ValidationOutcome::True,
             (_, true) => types::ValidationOutcome::False,
             _ => types::ValidationOutcome::Unk,
         };
 
-    metadata.test_pass_percent =
-        match test_pass_fail_pattern.captures_iter(&log).last() {
-            Some(c) => {
-                let failed: f64 = c[1].parse().unwrap_or(0.0);
-                let passed: f64 = c[2].parse().unwrap_or(0.0);
-                let frac: f64 = passed / (passed + failed) * 100.00;
-                format!(
-                    "{} out of {} tests passed ({}%)",
-                    failed,
-                    passed,
-                    frac.round()
-                )
-            },
-            None => String::from("UNK"),
-        };
+    let test_outcome = match test_pass_fail_pattern.captures_iter(&log).last() {
+        Some(c) => {
+            let failed: f64 = c[1].parse().unwrap_or(0.0);
+            let passed: f64 = c[2].parse().unwrap_or(0.0);
+            let total = passed + failed;
+            let frac: f64 = passed / total * 100.00;
+            Some(format!(
+                "{} out of {} tests passed ({}%)",
+                passed as i32,
+                total as i32,
+                frac.round()
+            ))
+        },
+        None => None,
+    };
+
+
+    let tests_ran = test_outcome.is_some();
+    let deploy_succeeded = matches!(deploy_outcome, types::ValidationOutcome::True);
+    let deploy_failed = matches!(deploy_outcome, types::ValidationOutcome::False);
+
+    metadata.compile_ok = if tests_ran || deploy_succeeded {
+        types::ValidationOutcome::True
+    } else if deploy_failed {
+        compile_outcome
+    } else {
+        compile_outcome
+    };
+
+    metadata.deploy_ok = if tests_ran {
+        types::ValidationOutcome::True
+    } else if matches!(metadata.compile_ok, types::ValidationOutcome::False) {
+        types::ValidationOutcome::False
+    } else {
+        deploy_outcome
+    };
+
+    metadata.test_pass_percent = if tests_ran {
+        test_outcome.unwrap()
+    } else if matches!(metadata.compile_ok, types::ValidationOutcome::False)
+        || matches!(metadata.deploy_ok, types::ValidationOutcome::False)
+    {
+        String::from("FALSE")
+    } else {
+        String::from("UNK")
+    };
+
+    let all_unk = matches!(metadata.compile_ok, types::ValidationOutcome::Unk)
+        && matches!(metadata.deploy_ok, types::ValidationOutcome::Unk)
+        && metadata.test_pass_percent == "UNK";
+
+    if !all_unk {
+        if matches!(metadata.compile_ok, types::ValidationOutcome::Unk) {
+            metadata.compile_ok = types::ValidationOutcome::True;
+        }
+        if matches!(metadata.deploy_ok, types::ValidationOutcome::Unk) {
+            if matches!(metadata.compile_ok, types::ValidationOutcome::True) {
+                metadata.deploy_ok = types::ValidationOutcome::False;
+            }
+        }
+        if metadata.test_pass_percent == "UNK" {
+            metadata.test_pass_percent = String::from("FALSE");
+        }
+    }
+
+    metadata.failure_category = categorize_failure(&log, &metadata);
 
     let mut metadata_file =
         File::create(&metadata_path).with_context(|| {
@@ -329,6 +385,78 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
         .write_all(serde_json::to_string_pretty(&metadata)?.as_bytes())?;
 
     Ok(())
+}
+
+fn categorize_failure(log: &str, metadata: &types::Metadata) -> Option<types::FailureCategory> {
+    use types::FailureCategory;
+    
+    if matches!(metadata.compile_ok, types::ValidationOutcome::True)
+        && matches!(metadata.deploy_ok, types::ValidationOutcome::True)
+        && !metadata.test_pass_percent.contains("0 out of")
+        && metadata.test_pass_percent != "FALSE"
+    {
+        return None;
+    }
+
+    
+    if log.contains("COMPILATION FAILURE") || log.contains("Compilation failure") {
+        return Some(FailureCategory::CompileError);
+    }
+    if log.contains("No plugin found for prefix") {
+        return Some(FailureCategory::BuildConfigError);
+    }
+    if log.contains("BUILD FAILURE") {
+        if log.contains("Could not resolve dependencies")
+            || log.contains("Failed to collect dependencies")
+            || log.contains("Dependency convergence error") {
+            return Some(FailureCategory::CompileDependency);
+        }
+        return Some(FailureCategory::BuildFailure);
+    }
+    
+    if log.contains("ERROR: invalid tag") || log.contains("invalid reference format") {
+        return Some(FailureCategory::DockerBuildError);
+    }
+    if log.contains("docker: Error response from daemon") {
+        if log.contains("Conflict") {
+            return Some(FailureCategory::ContainerConflict);
+        }
+        return Some(FailureCategory::DockerRunError);
+    }
+    
+    if log.contains("Container exited before") {
+        return Some(FailureCategory::AppStartupFailure);
+    }
+    if log.contains("Failed to connect to localhost") || log.contains("container is not running") {
+        return Some(FailureCategory::DeployFailure);
+    }
+    if log.contains("make: *** [up] Error") || log.contains("make: *** [Makefile:") {
+        return Some(FailureCategory::BuildOrDeployFailure);
+    }
+    
+    if metadata.test_pass_percent.contains("failed") {
+        if metadata.test_pass_percent.contains("0 out of")
+            || metadata.test_pass_percent.starts_with("0 out of") {
+            return Some(FailureCategory::TestFailures);
+        }
+        return Some(FailureCategory::TestFailure);
+    }
+    
+    if log.contains("timeout") || log.contains("Timeout") {
+        return Some(FailureCategory::Timeout);
+    }
+    
+    if matches!(metadata.compile_ok, types::ValidationOutcome::False) {
+        return Some(FailureCategory::CompileError);
+    }
+    if matches!(metadata.deploy_ok, types::ValidationOutcome::False) {
+        return Some(FailureCategory::DeployFailure);
+    }
+    if metadata.test_pass_percent == "FALSE" {
+        return Some(FailureCategory::NoTestOutput);
+    }
+    
+    Some(FailureCategory::Unknown)
 }
 
 /// Parse the run.log and categorize the errors or pass rates
