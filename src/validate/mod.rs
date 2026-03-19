@@ -22,7 +22,6 @@ use wait_timeout::ChildExt;
 
 use crate::utils::progress_bar::ProgressBar;
 
-use aho_corasick::AhoCorasick;
 use regex::Regex;
 
 #[derive(Args, Debug)]
@@ -35,10 +34,17 @@ pub struct ValidateArgs {
 
     #[arg(
         long,
-        default_value_t = 5,
+        default_value_t = 10,
         help = "How much time before we hit evaluation timeout (minutes)."
     )]
     pub timeout: u64,
+
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Only reanalyze existing run.log files without running make test again"
+    )]
+    pub reanalyze: bool,
 }
 
 // Each worker will send back to progress bar thread one of these
@@ -59,8 +65,10 @@ enum UiMessage {
 /// e. Pipe the contents of the `make logs` command to validation/run.log file and terminate.
 /// g. Parallelize the whole pipeline with rayon.
 pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
-    let conversions_dir = args.conversions_dir;
-    let dirs: Vec<_> = WalkDir::new(conversions_dir)
+    let conversions_dir = args.conversions_dir.clone();
+    let reanalyze = args.reanalyze;
+    
+    let dirs: Vec<_> = WalkDir::new(&conversions_dir)
         .min_depth(1)
         .follow_links(false)
         .into_iter()
@@ -87,13 +95,14 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 
     // Set up the terminal printer aggregrator that will aggregate the responses
     // from each of my worker and create/update a progress bar
+    let action = if reanalyze { "Reanalyzing Logs" } else { "Evaluating Conversions" };
     let tui = thread::spawn(move || -> anyhow::Result<()> {
         // Set up my terminal
         term::init(std::io::stderr().is_terminal());
         term::hide_cursor()?;
 
         // initialize our progress bar
-        let mut pb = total.progress("Evaluating Conversions", "Solutions");
+        let mut pb = total.progress(action, "Solutions");
 
         while let Ok(msg) = rx.recv() {
             match msg {
@@ -112,18 +121,25 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 
     // Dispatch parallel calls (one for each directory I found above)
     dirs.par_iter().for_each_with(tx.clone(), |tx, dir| {
-        let res = copy_validation_harness_and_run_make_test(
-            &args.benchmark_dir,
-            &dir,
-            args.timeout,
-        );
+        let res = if reanalyze {
+            reanalyze_existing_logs(&dir)
+        } else {
+            copy_validation_harness_and_run_make_test(
+                &args.benchmark_dir,
+                &dir,
+                args.timeout,
+            )
+        };
+        
         match res {
             Ok(_) => {
+                let action = if reanalyze { "reanalyzed" } else { "validated" };
                 let _ = tx.send(UiMessage::Log(format!(
                     "{}\t{}",
                     format!("{}", "[INFO]".to_string()).bold().bright_cyan(),
                     format!(
-                        "Successfully completed validations on {}",
+                        "Successfully {} {}",
+                        action,
                         dir.to_string_lossy()
                     )
                     .bold()
@@ -147,6 +163,21 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     drop(tx);
     tui.join().map_err(|e| anyhow!("TUI panicked: {:?}", e))??;
     Ok(0)
+}
+
+/// Reanalyze existing run.log files without running make test
+fn reanalyze_existing_logs(conversions_dir: &PathBuf) -> anyhow::Result<()> {
+    let log_path = conversions_dir.join("validation").join("run.log");
+    
+    if !log_path.exists() {
+        return Err(anyhow::anyhow!(
+            "No run.log found at {}. Run without --reanalyze first.",
+            log_path.display()
+        ));
+    }
+    
+    parse_run_log_and_update_metadata(&log_path)?;
+    Ok(())
 }
 
 /// Run `make test` on the deployed directory
@@ -267,56 +298,37 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
         format!("failed to parse metadata JSON at {}", metadata_path.display())
     })?;
 
-    let compile_fail = AhoCorasick::new([
-        "BUILD FAILURE",
-        "COMPILATION FAILURE",
-        "Compilation failure",
-        "No plugin found for prefix",
-    ])?;
-    let compile_success =
-        AhoCorasick::new(["BUILD SUCCESS", "BUILD SUCCESSFUL"])?;
+    // Analyze compile, deploy, and test outcomes
+    let (compile_outcome, compile_reason, compile_category) = analyze_compile(&log);
+    let (deploy_outcome, deploy_reason, deploy_category) = analyze_deploy(&log, &compile_outcome);
+    let (test_outcome, test_reason, test_category, inconclusive) = analyze_tests(&log, &deploy_outcome);
 
-    let deploy_fail = AhoCorasick::new([
-        "Container exited before",
-        "[ERROR] Container exited before startup success:",
-        "Failed to connect to localhost",
-        "container is not running",
-        "make: *** [Makefile:",
-    ])?;
-    let deploy_success = AhoCorasick::new(["Application started and ready"])?;
+    // Update metadata
+    metadata.compile_ok = compile_outcome;
+    metadata.deploy_ok = deploy_outcome;
+    metadata.test_pass_percent = test_outcome;
+    metadata.inconclusive = inconclusive;
 
-    let test_pass_fail_pattern =
-        Regex::new(r"(\d+)\s+failed,\s+(\d+)\s+passed")?;
+    // Set failure reason and category
+    let mut reasons = Vec::new();
+    if let Some(r) = compile_reason {
+        reasons.push(r);
+    }
+    if let Some(r) = deploy_reason {
+        reasons.push(r);
+    }
+    if let Some(r) = test_reason {
+        reasons.push(r);
+    }
+    
+    if !reasons.is_empty() {
+        metadata.failure_reason = Some(reasons.join("; "));
+    }
 
-    metadata.compile_ok =
-        match (compile_success.is_match(&log), compile_fail.is_match(&log)) {
-            (_, true) => types::ValidationOutcome::False,
-            (true, false) => types::ValidationOutcome::True,
-            _ => types::ValidationOutcome::Unk,
-        };
-
-    metadata.deploy_ok =
-        match (deploy_success.is_match(&log), deploy_fail.is_match(&log)) {
-            (true, false) => types::ValidationOutcome::True,
-            (_, true) => types::ValidationOutcome::False,
-            _ => types::ValidationOutcome::Unk,
-        };
-
-    metadata.test_pass_percent =
-        match test_pass_fail_pattern.captures_iter(&log).last() {
-            Some(c) => {
-                let failed: f64 = c[1].parse().unwrap_or(0.0);
-                let passed: f64 = c[2].parse().unwrap_or(0.0);
-                let frac: f64 = passed / (passed + failed) * 100.00;
-                format!(
-                    "{} out of {} tests passed ({}%)",
-                    failed,
-                    passed,
-                    frac.round()
-                )
-            },
-            None => String::from("UNK"),
-        };
+    // Priority: test > deploy > compile category
+    metadata.failure_category = test_category
+        .or(deploy_category)
+        .or(compile_category);
 
     let mut metadata_file =
         File::create(&metadata_path).with_context(|| {
@@ -331,7 +343,200 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Parse the run.log and categorize the errors or pass rates
+/// Analyze compile status from log
+fn analyze_compile(log: &str) -> (types::ValidationOutcome, Option<String>, Option<types::FailureCategory>) {
+    // BUILD FAILURE in maven - check this FIRST before BUILD SUCCESS
+    if log.contains("BUILD FAILURE") {
+        // Check if it's a compile error vs other maven error
+        if log.contains("COMPILATION ERROR") || log.contains("cannot find symbol") || log.contains("package") && log.contains("does not exist") {
+            let reason = "Compilation errors detected in Maven build".to_string();
+            return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::CompileError));
+        }
+
+        if log.contains("NoPluginFoundForPrefixException") || log.contains("No plugin found for prefix") {
+            let reason = "Maven plugin not found - wrong framework build tool used".to_string();
+            return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::BuildConfigError));
+        }
+
+        // Check for dependency issues
+        if log.contains("Could not resolve dependencies") || log.contains("Failed to collect dependencies") {
+            let reason = "Maven dependency resolution failed".to_string();
+            return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::CompileDependency));
+        }
+
+        // Generic build failure
+        let reason = "Maven build failed".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::BuildFailure));
+    }
+
+    // Docker image built successfully = compile succeeded
+    if log.contains("naming to docker.io") {
+        return (types::ValidationOutcome::True, None, None);
+    }
+
+    // Explicit BUILD SUCCESS in maven
+    if log.contains("BUILD SUCCESS") {
+        return (types::ValidationOutcome::True, None, None);
+    }
+
+    // Docker build failed
+    if log.contains("docker build") && (log.contains("ERROR") || log.contains("failed to")) && !log.contains("naming to docker.io") {
+        let reason = "Docker build failed".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::DockerBuildError));
+    }
+
+    // pull access denied means the image from a previous build wasn't available
+    if log.contains("pull access denied") && !log.contains("naming to docker.io") {
+        let reason = "Docker image not found (build likely failed in a shared build step)".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::DockerImageMissing));
+    }
+
+    // If there's make: *** [build] Error
+    if log.contains("make: *** [build]") {
+        let reason = "Build step failed".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::BuildFailure));
+    }
+
+    (types::ValidationOutcome::Unk, Some("No clear compile outcome found in logs".to_string()), Some(types::FailureCategory::Unknown))
+}
+
+/// Analyze deploy status from log
+fn analyze_deploy(log: &str, compile_ok: &types::ValidationOutcome) -> (types::ValidationOutcome, Option<String>, Option<types::FailureCategory>) {
+    if matches!(compile_ok, types::ValidationOutcome::False) {
+        return (types::ValidationOutcome::False, Some("Cannot deploy - compilation failed".to_string()), Some(types::FailureCategory::CompileDependency));
+    }
+
+    // App started and ready
+    if log.contains("pplication started and ready.") {
+        return (types::ValidationOutcome::True, None, None);
+    }
+
+    // If tests ran, deployment must have succeeded
+    let test_summary_pattern = Regex::new(r"=+ .*(?:passed|failed|error).*=+").unwrap();
+    if test_summary_pattern.is_match(log) {
+        return (types::ValidationOutcome::True, None, None);
+    }
+
+    // If there was pytest output at all
+    if log.contains("short test summary info") || log.contains("PASSED") || log.contains("FAILED smoke.py") {
+        return (types::ValidationOutcome::True, None, None);
+    }
+
+    // Container started but app didn't come up
+    if log.contains("docker run -d") && (log.contains("Connection refused") || log.contains("container exited")) {
+        let reason = "Container started but application failed to start".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::AppStartupFailure));
+    }
+
+    // Docker run errors
+    if log.contains("pull access denied") {
+        let reason = "Docker image not found".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::DockerImageMissing));
+    }
+
+    if log.contains("container name") && log.contains("already in use") && !log.contains("naming to docker.io") {
+        let reason = "Container name conflict from previous run".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::ContainerConflict));
+    }
+
+    // If make up failed
+    if log.contains("make: *** [up]") {
+        if matches!(compile_ok, types::ValidationOutcome::True) {
+            let reason = "Deployment failed after successful build".to_string();
+            return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::DeployFailure));
+        }
+        let reason = "make up failed".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::DeployFailure));
+    }
+
+    // Terminated
+    if log.contains("Terminated: 15") {
+        let reason = "Process was terminated (SIGTERM)".to_string();
+        return (types::ValidationOutcome::False, Some(reason), Some(types::FailureCategory::ProcessTerminated));
+    }
+
+    // Log ends with "waiting for app to start..." - process was cut short
+    // Check if the log contains this message and doesn't have deployment success or test results after it
+    if log.contains("waiting for app to start...") {
+        let after_waiting = log.split("waiting for app to start...").last().unwrap_or("");
+        // If there's no meaningful content after "waiting for app to start..." (just whitespace or check comments)
+        if !after_waiting.contains("pplication started and ready")
+            && !after_waiting.contains("PASSED")
+            && !after_waiting.contains("FAILED")
+            && !after_waiting.contains("===") {
+            let reason = "Validation process cut short - log ends at health check wait (rerun needed)".to_string();
+            return (types::ValidationOutcome::Unk, Some(reason), Some(types::FailureCategory::ValidationTruncated));
+        }
+    }
+
+    if matches!(compile_ok, types::ValidationOutcome::True) {
+        return (types::ValidationOutcome::Unk, Some("Compiled successfully but no deploy outcome found".to_string()), Some(types::FailureCategory::Unknown));
+    }
+
+    (types::ValidationOutcome::Unk, Some("No clear deploy outcome found".to_string()), Some(types::FailureCategory::Unknown))
+}
+
+/// Analyze test results from log
+fn analyze_tests(log: &str, deploy_ok: &types::ValidationOutcome) -> (String, Option<String>, Option<types::FailureCategory>, bool) {
+    if matches!(deploy_ok, types::ValidationOutcome::False) {
+        return ("0".to_string(), Some("Cannot test - deployment failed".to_string()), Some(types::FailureCategory::DeployDependency), false);
+    }
+
+    // Look for pytest summary lines - find ALL and use the LAST one
+    let summary_pattern = Regex::new(r"=+ (.*?(?:passed|failed|error).*?) =+").unwrap();
+    let summaries: Vec<_> = summary_pattern.captures_iter(log).collect();
+
+    if let Some(last_summary) = summaries.last() {
+        let summary = &last_summary[1];
+        
+        let passed_re = Regex::new(r"(\d+) passed").unwrap();
+        let failed_re = Regex::new(r"(\d+) failed").unwrap();
+        let error_re = Regex::new(r"(\d+) error").unwrap();
+
+        let passed: i32 = passed_re.captures(summary)
+            .and_then(|c| c[1].parse().ok())
+            .unwrap_or(0);
+        let failed: i32 = failed_re.captures(summary)
+            .and_then(|c| c[1].parse().ok())
+            .unwrap_or(0);
+        let errors: i32 = error_re.captures(summary)
+            .and_then(|c| c[1].parse().ok())
+            .unwrap_or(0);
+
+        let total = passed + failed + errors;
+        if total > 0 {
+            let pct = (passed as f64 / total as f64 * 100.0).round();
+            let pct_str = format!("{}", pct);
+
+            if failed > 0 || errors > 0 {
+                let reason = format!("{} failed, {} errors, {} passed out of {} tests", failed, errors, passed, total);
+                return (pct_str, Some(reason), Some(types::FailureCategory::TestFailures), false);
+            } else {
+                return (pct_str, None, None, false);
+            }
+        }
+    }
+
+    // Check for Error 137 during test (OOM/timeout kill)
+    if log.contains("make: *** [test] Error 137") {
+        let reason = "Test process killed (Error 137 - likely OOM/timeout)".to_string();
+        return ("UNK".to_string(), Some(reason), Some(types::FailureCategory::TestTimeoutOom), true);
+    }
+
+    // make test Error 1
+    if log.contains("make: *** [test] Error 1") {
+        let reason = "Test step failed with Error 1".to_string();
+        return ("0".to_string(), Some(reason), Some(types::FailureCategory::TestFailure), true);
+    }
+
+    if matches!(deploy_ok, types::ValidationOutcome::True) {
+        let reason = "App deployed but no test results found in log".to_string();
+        return ("UNK".to_string(), Some(reason), Some(types::FailureCategory::NoTestOutput), true);
+    }
+
+    ("UNK".to_string(), None, None, false)
+}
+
 
 /// Read the metadata.json file. This will give us the layer name, the app name, and the target framework
 ///
