@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context};
 use clap::Args;
 use kdam::term;
 use kdam::BarExt;
-use owo_colors::*;
+use owo_colors::OwoColorize;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs;
@@ -29,7 +29,7 @@ pub struct ValidateArgs {
     pub conversions_dir: PathBuf,
 
     #[arg(long, help = "The path where the benchmark directory is stored")]
-    pub benchmark_dir: PathBuf,
+    pub validations_dir: PathBuf,
 
     #[arg(
         long,
@@ -57,10 +57,10 @@ enum UiMessage {
 /// -----
 /// a. Walk over all the directories in the conversions directory
 /// b. Read the innermost metadata.json file. This will give us the layer name, the app name,
-/// source and target framework.
+///     source and target framework.
 /// c. We use this to look through the benchmark directory to copy the makefile, the dockerfile
-/// and the smoke.py (or smoke/) to the output directory of the same folder that has the metadata.json
-/// d. Then, while inside the output directory, we call make test (with a 300 second) timeout.
+///     and the smoke.py (or smoke/) to the output directory of the same folder that has the metadata.json
+/// d. Then, while inside the output directory, we call make test (with a 300 second or user specified) timeout.
 /// e. Pipe the contents of the `make logs` command to validation/run.log file and terminate.
 /// g. Parallelize the whole pipeline with rayon.
 pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
@@ -75,8 +75,8 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
         .filter(|entry| {
             // Find the location of the metadata file. This will be our
             // anchor
-            entry.file_type().is_file()
-                && entry.file_name().to_string_lossy() == "metadata.json"
+            entry.file_type().is_dir()
+                && entry.file_name().to_string_lossy().starts_with("run_")
         })
         .filter_map(|entry| {
             Some(entry.path().parent()?.to_path_buf())
@@ -101,7 +101,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
         term::init(std::io::stderr().is_terminal());
 
         // initialize our progress bar
-        let mut pb = total.progress(action, "Solutions");
+        let mut pb = total.progress(action, " Eval");
 
         while let Ok(msg) = rx.recv() {
             match msg {
@@ -120,15 +120,25 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 
     // Dispatch parallel calls (one for each directory I found above)
     dirs.par_iter().for_each_with(tx.clone(), |tx, dir| {
-        let res = if reanalyze {
-            reanalyze_existing_logs(&dir)
-        } else {
-            copy_validation_harness_and_run_make_test(
-                &args.benchmark_dir,
-                &dir,
-                args.timeout,
-            )
-        };
+        let res: anyhow::Result<()> =  fs::read_dir(dir)
+            .with_context(|| format!("Failed to read sub directories of {}", dir.display()))
+            .and_then(|entries| {
+                entries
+                    .filter_map(Result::ok) // ignore any subdirs that are not readable. This shouldn't happen but still...
+                    .map(|e| e.path())
+                    .filter(|p| p.is_dir() && p.file_name().to_string_lossy().starts_with("run_"))
+                    .try_for_each(|subdir| {
+                        if reanalyze {
+                            reanalyze_existing_logs(&subdir)
+                        } else {
+                            copy_validation_harness_and_run_make_test(
+                                &args.validations_dir,
+                                &subdir,
+                                args.timeout,
+                            )
+                        }
+                    })
+            });
 
         match res {
             Ok(_) => {
@@ -264,7 +274,6 @@ fn copy_validation_harness_and_run_make_test(
             parse_run_log_and_update_metadata(&log_path)?;
         },
     };
-
     Ok(())
 }
 
@@ -321,12 +330,6 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     if !reasons.is_empty() {
         metadata.failure_reason = Some(reasons.join("; "));
     }
-    metadata.compile_ok =
-        match (compile_success.is_match(&log), compile_fail.is_match(&log)) {
-            (_, true) => types::ValidationOutcome::False,
-            (true, false) => types::ValidationOutcome::True,
-            _ => types::ValidationOutcome::Unk,
-        };
 
     // Priority: test > deploy > compile category
     metadata.failure_category =
