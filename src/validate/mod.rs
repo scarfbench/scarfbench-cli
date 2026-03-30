@@ -13,7 +13,7 @@ use std::fs;
 use std::fs::File;
 use std::io::IsTerminal;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf}; 
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
@@ -45,6 +45,13 @@ pub struct ValidateArgs {
         help = "Only reanalyze existing run.log files without running make test again"
     )]
     pub reanalyze: bool,
+
+    #[arg(
+        long,
+        value_enum,
+        help = "Rerun only conversions that failed at a specific stage (compile-failures, deploy-failures, test-failures)"
+    )]
+    pub rerun: Option<types::RerunFilter>,
 }
 
 // Each worker will send back to progress bar thread one of these
@@ -67,8 +74,9 @@ enum UiMessage {
 pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     let conversions_dir = args.conversions_dir.clone();
     let reanalyze = args.reanalyze;
+    let rerun_filter = args.rerun;
     
-    let dirs: Vec<_> = WalkDir::new(&conversions_dir)
+    let mut dirs: Vec<_> = WalkDir::new(&conversions_dir)
         .min_depth(1)
         .follow_links(false)
         .into_iter()
@@ -88,6 +96,31 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
         .collect::<Vec<_>>();
 
     log::debug!("Found {} conversions", dirs.len());
+
+    // Apply rerun filter if specified
+    if let Some(filter) = rerun_filter {
+        let filter_name = match filter {
+            types::RerunFilter::CompileFailures => "compile failures",
+            types::RerunFilter::DeployFailures => "deploy failures",
+            types::RerunFilter::TestFailures => "test failures",
+            types::RerunFilter::ValidationTruncated => "validation truncated/inconclusive",
+        };
+        log::info!("Filtering for {} only", filter_name);
+        
+        dirs.retain(|dir| {
+            let metadata_path = dir.join("metadata.json");
+            match should_rerun(&metadata_path, filter) {
+                Ok(true) => true,
+                Ok(false) => false,
+                Err(e) => {
+                    log::warn!("Failed to check metadata for {}: {}", dir.display(), e);
+                    false
+                }
+            }
+        });
+        
+        log::info!("Filtered to {} conversions matching {}", dirs.len(), filter_name);
+    }
 
     let total = dirs.len();
 
@@ -165,6 +198,44 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     Ok(0)
 }
 
+/// Check if a conversion should be rerun based on the rerun filter
+fn should_rerun(metadata_path: &Path, rerun_filter: types::RerunFilter) -> anyhow::Result<bool> {
+    let metadata: types::Metadata = serde_json::from_reader(
+        File::open(metadata_path).with_context(|| {
+            format!("failed to open metadata JSON at {}", metadata_path.display())
+        })?,
+    )
+    .with_context(|| {
+        format!("failed to parse metadata JSON at {}", metadata_path.display())
+    })?;
+
+    let should_rerun = match rerun_filter {
+        types::RerunFilter::CompileFailures => {
+            matches!(metadata.compile_ok, types::ValidationOutcome::False | types::ValidationOutcome::Unk)
+        }
+        types::RerunFilter::DeployFailures => {
+            matches!(metadata.deploy_ok, types::ValidationOutcome::False | types::ValidationOutcome::Unk)
+        }
+        types::RerunFilter::TestFailures => {
+            // Test failures are when deploy succeeded but tests didn't pass 100%
+            matches!(metadata.deploy_ok, types::ValidationOutcome::True)
+                && (metadata.test_pass_percent == "0"
+                    || (metadata.test_pass_percent != "100"
+                        && metadata.test_pass_percent != "UNK"))
+        }
+        types::RerunFilter::ValidationTruncated => {
+            // Check if the failure category is ValidationTruncated or if marked as inconclusive
+            metadata.inconclusive
+                || matches!(
+                    metadata.failure_category,
+                    Some(types::FailureCategory::ValidationTruncated)
+                )
+        }
+    };
+
+    Ok(should_rerun)
+}
+
 /// Reanalyze existing run.log files without running make test
 fn reanalyze_existing_logs(conversions_dir: &PathBuf) -> anyhow::Result<()> {
     let log_path = conversions_dir.join("validation").join("run.log");
@@ -190,7 +261,7 @@ fn copy_validation_harness_and_run_make_test(
     let (layer, app, framework) = read_metadata_json(conversions_dir)?;
     let src = benchmark_dir.join(layer).join(app).join(framework);
     let dst = conversions_dir.join("output");
-    println!(
+    log::debug!(
         "Copying validation harness from {} to {}",
         src.display(),
         dst.display()
@@ -212,6 +283,22 @@ fn copy_validation_harness_and_run_make_test(
                 dst_path.display()
             );
 
+            // Remove existing file/directory first to ensure clean copy
+            if dst_path.exists() {
+                let remove_result = if dst_path.is_dir() {
+                    fs::remove_dir_all(&dst_path)
+                } else {
+                    fs::remove_file(&dst_path)
+                };
+                
+                if let Err(e) = remove_result {
+                    log::warn!(
+                        "Failed to remove existing {} before copy: {e}",
+                        dst_path.display()
+                    );
+                }
+            }
+
             let copy_result = if src_path.is_dir() {
                 copy_dir_recursive(&src_path, &dst_path)
             } else {
@@ -228,7 +315,9 @@ fn copy_validation_harness_and_run_make_test(
                 );
             }
         });
+    
     // --- Now we will run make test ---
+    log::debug!("About to run make test for {}", conversions_dir.display());
     let timeout = Duration::from_secs(timeout_in_minutes * 60);
     let log_dir = conversions_dir.join("validation");
     fs::create_dir_all(&log_dir)

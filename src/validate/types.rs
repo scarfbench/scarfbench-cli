@@ -1,6 +1,20 @@
 use bon::Builder;
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use strum_macros::Display;
+
+/// Rerun filter types for validation
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum RerunFilter {
+    /// Rerun only conversions that failed at compile stage
+    CompileFailures,
+    /// Rerun only conversions that failed at deploy stage
+    DeployFailures,
+    /// Rerun only conversions that failed at test stage
+    TestFailures,
+    /// Rerun only conversions where validation was truncated/incomplete
+    ValidationTruncated,
+}
 
 /// This captures the conversion status
 #[derive(Clone, Debug, Deserialize, Serialize)]
