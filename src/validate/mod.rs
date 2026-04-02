@@ -1,9 +1,9 @@
 mod types;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Args;
-use kdam::term;
 use kdam::BarExt;
+use kdam::term;
 use owo_colors::OwoColorize;
 use rayon::prelude::*;
 use std::collections::HashSet;
@@ -126,7 +126,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                 entries
                     .filter_map(Result::ok) // ignore any subdirs that are not readable. This shouldn't happen but still...
                     .map(|e| e.path())
-                    .filter(|p| p.is_dir() && p.file_name().to_string_lossy().starts_with("run_"))
+                    .filter(|p| p.is_dir() && p.file_name().expect("Unable to open the directory").to_string_lossy().starts_with("run_"))
                     .try_for_each(|subdir| {
                         if reanalyze {
                             reanalyze_existing_logs(&subdir)
