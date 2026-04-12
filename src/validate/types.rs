@@ -52,9 +52,9 @@ pub struct Metadata {
     /// Deploy status
     #[serde(default)]
     pub deploy_ok: ValidationOutcome,
-    /// Test pass percentage or result
+    /// Absolute number of tests that passed (None if unknown/not run)
     #[serde(default)]
-    pub test_pass_percent: String,
+    pub tests_passed: Option<u32>,
     /// Failure reason (if any)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,

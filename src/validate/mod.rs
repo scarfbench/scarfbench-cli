@@ -37,13 +37,6 @@ pub struct ValidateArgs {
         help = "How much time before we hit evaluation timeout (minutes)."
     )]
     pub timeout: u64,
-
-    #[arg(
-        long,
-        default_value_t = false,
-        help = "Only reanalyze existing run.log files without running make test again"
-    )]
-    pub reanalyze: bool,
 }
 
 // Each worker will send back to progress bar thread one of these
@@ -65,7 +58,6 @@ enum UiMessage {
 /// g. Parallelize the whole pipeline with rayon.
 pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     let conversions_dir = args.conversions_dir.clone();
-    let reanalyze = args.reanalyze;
 
     let dirs: Vec<_> = WalkDir::new(&conversions_dir)
         .min_depth(1)
@@ -94,14 +86,12 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 
     // Set up the terminal printer aggregrator that will aggregate the responses
     // from each of my worker and create/update a progress bar
-    let action =
-        if reanalyze { "Reanalyzing Logs" } else { "Evaluating Conversions" };
     let tui = thread::spawn(move || -> anyhow::Result<()> {
         // Set up my terminal
         term::init(std::io::stderr().is_terminal());
 
         // initialize our progress bar
-        let mut pb = total.progress(action, " Eval");
+        let mut pb = total.progress("Evaluating Conversions", " Eval");
 
         while let Ok(msg) = rx.recv() {
             match msg {
@@ -118,83 +108,93 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
         Ok(())
     });
 
-    // Dispatch parallel calls (one for each directory I found above)
-    dirs.par_iter().for_each_with(tx.clone(), |tx, dir| {
-        let res: anyhow::Result<()> =  fs::read_dir(dir)
-            .with_context(|| format!("Failed to read sub directories of {}", dir.display()))
-            .and_then(|entries| {
-                entries
-                    .filter_map(Result::ok) // ignore any subdirs that are not readable. This shouldn't happen but still...
-                    .map(|e| e.path())
-                    .filter(|p| p.is_dir() && p.file_name().expect("Unable to open the directory").to_string_lossy().starts_with("run_"))
-                    .try_for_each(|subdir| {
-                        if reanalyze {
-                            reanalyze_existing_logs(&subdir)
-                        } else {
-                            copy_validation_harness_and_run_make_test(
-                                &args.validations_dir,
-                                &subdir,
-                                args.timeout,
-                            )
-                        }
-                    })
-            });
-
-        match res {
-            Ok(_) => {
-                let action = if reanalyze { "reanalyzed" } else { "validated" };
-                let _ = tx.send(UiMessage::Log(format!(
-                    "{}\t{}",
-                    format!("{}", "[INFO]".to_string()).bold().bright_cyan(),
+    // dispatch parallel make test runs, collecting log paths for phase 2
+    let collected_log_paths: Vec<anyhow::Result<Vec<PathBuf>>> = dirs
+        .par_iter()
+        .map_with(tx.clone(), |tx, dir| {
+            let res: anyhow::Result<Vec<PathBuf>> = fs::read_dir(dir)
+                .with_context(|| {
                     format!(
-                        "Successfully {} {}",
-                        action,
-                        dir.to_string_lossy()
+                        "Failed to read sub directories of {}",
+                        dir.display()
                     )
-                    .bold()
-                    .bright_white()
-                )));
-            },
-            Err(e) => {
-                let _ = tx.send(UiMessage::Log(format!(
-                    "{}\t{}",
-                    format!("{}", "[ERROR]".to_string())
-                        .bold()
-                        .bright_magenta(),
-                    format!("{}", e).bold().bright_magenta()
-                )));
-            },
-        }
+                })
+                .and_then(|entries| {
+                    entries
+                        .filter_map(Result::ok) // ignore any subdirs that are not readable. This shouldn't happen but still...
+                        .map(|e| e.path())
+                        .filter(|p| {
+                            p.is_dir()
+                                && p.file_name()
+                                    .expect("Unable to open the directory")
+                                    .to_string_lossy()
+                                    .starts_with("run_")
+                        })
+                        .try_fold(Vec::new(), |mut log_paths, subdir| {
+                            let log_path =
+                                copy_validation_harness_and_run_make_test(
+                                    &args.validations_dir,
+                                    &subdir,
+                                    args.timeout,
+                                )?;
+                            log_paths.push(log_path);
+                            Ok(log_paths)
+                        })
+                });
 
-        let _ = tx.send(UiMessage::Tick(1));
-    });
+            match &res {
+                Ok(_) => {
+                    let _ = tx.send(UiMessage::Log(format!(
+                        "{}\t{}",
+                        format!("{}", "[INFO]".to_string())
+                            .bold()
+                            .bright_cyan(),
+                        format!(
+                            "Successfully validated {}",
+                            dir.to_string_lossy()
+                        )
+                        .bold()
+                        .bright_white()
+                    )));
+                },
+                Err(e) => {
+                    let _ = tx.send(UiMessage::Log(format!(
+                        "{}\t{}",
+                        format!("{}", "[ERROR]".to_string())
+                            .bold()
+                            .bright_magenta(),
+                        format!("{}", e).bold().bright_magenta()
+                    )));
+                },
+            }
+
+            let _ = tx.send(UiMessage::Tick(1));
+            res
+        })
+        .collect();
+
     // Thats it---discard any stray transmitters
     drop(tx);
     tui.join().map_err(|e| anyhow!("TUI panicked: {:?}", e))??;
+
+    // parse all log files and update metadata.json, now that every
+    // make test has finished.
+    for log_path in
+        collected_log_paths.into_iter().filter_map(Result::ok).flatten()
+    {
+        parse_run_log_and_update_metadata(&log_path)?;
+    }
+
     Ok(0)
 }
 
-/// Reanalyze existing run.log files without running make test
-fn reanalyze_existing_logs(conversions_dir: &PathBuf) -> anyhow::Result<()> {
-    let log_path = conversions_dir.join("validation").join("run.log");
-
-    if !log_path.exists() {
-        return Err(anyhow::anyhow!(
-            "No run.log found at {}. Run without --reanalyze first.",
-            log_path.display()
-        ));
-    }
-
-    parse_run_log_and_update_metadata(&log_path)?;
-    Ok(())
-}
-
-/// Run `make test` on the deployed directory
+/// Run `make test` on the deployed directory.
+/// Returns the path to the run.log file so the caller can parse it later.
 fn copy_validation_harness_and_run_make_test(
     validations_dir: &PathBuf,
     conversions_dir: &PathBuf,
     timeout_in_minutes: u64,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<PathBuf> {
     // --- First we will copy over the test harness from the benchmark directory ---
     let (layer, app, framework) = read_metadata_json(conversions_dir)?;
     let src = validations_dir.join(layer).join(app).join(framework);
@@ -264,17 +264,14 @@ fn copy_validation_harness_and_run_make_test(
         .wait_timeout(timeout)
         .context("couldn't spawn child with wait_timeout")?
     {
-        Some(_) => {
-            parse_run_log_and_update_metadata(&log_path)?;
-        },
+        Some(_) => {},
         None => {
             // Kill the process because we didn't get a status back...
             child.kill()?;
             child.wait()?; // Wait for the process to finish killing
-            parse_run_log_and_update_metadata(&log_path)?;
         },
     };
-    Ok(())
+    Ok(log_path)
 }
 
 /// Look at the log file and determine whether the run passed, or at what stage it failed
@@ -312,7 +309,7 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     // Update metadata
     metadata.compile_ok = compile_outcome;
     metadata.deploy_ok = deploy_outcome;
-    metadata.test_pass_percent = test_outcome;
+    metadata.tests_passed = test_outcome;
     metadata.inconclusive = inconclusive;
 
     // Set failure reason and category
@@ -334,27 +331,6 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     // Priority: test > deploy > compile category
     metadata.failure_category =
         test_category.or(deploy_category).or(compile_category);
-
-    let failed_pattern = Regex::new(r"(\d+)\s+failed")?;
-    let passed_pattern = Regex::new(r"(\d+)\s+passed")?;
-
-    let failed: f64 = failed_pattern
-        .captures(&log)
-        .and_then(|c| c[1].parse().ok())
-        .unwrap_or(0.0);
-
-    let passed: f64 = passed_pattern
-        .captures(&log)
-        .and_then(|c| c[1].parse().ok())
-        .unwrap_or(0.0);
-
-    let total = passed + failed;
-    metadata.test_pass_percent = if total == 0.0 {
-        String::from("UNK")
-    } else {
-        let frac = (passed / total * 100.0 * 100.0).round() / 100.0;
-        format!("{} out of {} tests passed ({}%)", passed, total, frac)
-    };
     let mut metadata_file =
         File::create(&metadata_path).with_context(|| {
             format!(
@@ -614,10 +590,10 @@ fn analyze_deploy(
 fn analyze_tests(
     log: &str,
     deploy_ok: &types::ValidationOutcome,
-) -> (String, Option<String>, Option<types::FailureCategory>, bool) {
+) -> (Option<u32>, Option<String>, Option<types::FailureCategory>, bool) {
     if matches!(deploy_ok, types::ValidationOutcome::False) {
         return (
-            "0".to_string(),
+            Some(0),
             Some("Cannot test - deployment failed".to_string()),
             Some(types::FailureCategory::DeployDependency),
             false,
@@ -636,37 +612,34 @@ fn analyze_tests(
         let failed_re = Regex::new(r"(\d+) failed").unwrap();
         let error_re = Regex::new(r"(\d+) error").unwrap();
 
-        let passed: i32 = passed_re
+        let passed: u32 = passed_re
             .captures(summary)
             .and_then(|c| c[1].parse().ok())
             .unwrap_or(0);
-        let failed: i32 = failed_re
+        let failed: u32 = failed_re
             .captures(summary)
             .and_then(|c| c[1].parse().ok())
             .unwrap_or(0);
-        let errors: i32 = error_re
+        let errors: u32 = error_re
             .captures(summary)
             .and_then(|c| c[1].parse().ok())
             .unwrap_or(0);
 
         let total = passed + failed + errors;
         if total > 0 {
-            let pct = (passed as f64 / total as f64 * 100.0).round();
-            let pct_str = format!("{}", pct);
-
             if failed > 0 || errors > 0 {
                 let reason = format!(
                     "{} failed, {} errors, {} passed out of {} tests",
                     failed, errors, passed, total
                 );
                 return (
-                    pct_str,
+                    Some(passed),
                     Some(reason),
                     Some(types::FailureCategory::TestFailures),
                     false,
                 );
             } else {
-                return (pct_str, None, None, false);
+                return (Some(passed), None, None, false);
             }
         }
     }
@@ -676,7 +649,7 @@ fn analyze_tests(
         let reason =
             "Test process killed (Error 137 - likely OOM/timeout)".to_string();
         return (
-            "UNK".to_string(),
+            None,
             Some(reason),
             Some(types::FailureCategory::TestTimeoutOom),
             true,
@@ -687,7 +660,7 @@ fn analyze_tests(
     if log.contains("make: *** [test] Error 1") {
         let reason = "Test step failed with Error 1".to_string();
         return (
-            "0".to_string(),
+            Some(0),
             Some(reason),
             Some(types::FailureCategory::TestFailure),
             true,
@@ -698,14 +671,14 @@ fn analyze_tests(
         let reason =
             "App deployed but no test results found in log".to_string();
         return (
-            "UNK".to_string(),
+            None,
             Some(reason),
             Some(types::FailureCategory::NoTestOutput),
             true,
         );
     }
 
-    ("UNK".to_string(), None, None, false)
+    (None, None, None, false)
 }
 
 /// Read the metadata.json file. This will give us the layer name, the app name, and the target framework
