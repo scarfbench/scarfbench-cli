@@ -1,4 +1,5 @@
-use crate::eval::types::{EvalLayout, RunMetaData};
+use crate::eval::types::{AgentConfig, EvalLayout, RunMetaData};
+use std::io::ErrorKind;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 use std::{
@@ -13,16 +14,25 @@ pub fn dispatch_agent(
     agent_dir: &Path,
     eval_layout: &EvalLayout,
 ) -> anyhow::Result<()> {
-    for (eval_key, eval_group) in eval_layout {
-        // If the current dir eval_root/{agent_name}__{layer}__.../ doesn't contain the current agent dir thjen we skip that
-        if !agent_dir
-            .file_name()
-            .and_then(|f| f.to_str())
-            .is_some_and(|a| eval_key.agent().eq(a))
-        {
-            continue;
-        }
+    // Load agent.toml from the agent_dir. This gives us the proper agent name (matched
+    // against metadata.json's solution_name) and the entrypoint script to invoke.
+    let agent_toml_path = agent_dir.join("agent.toml");
+    let agent_config: AgentConfig = match fs::read_to_string(&agent_toml_path) {
+        Ok(s) => toml::from_str(&s).map_err(|e| {
+            anyhow::anyhow!("failed to parse {}: {}", agent_toml_path.display(), e)
+        })?,
+        Err(e) if e.kind() == ErrorKind::NotFound => anyhow::bail!(
+            "agent.toml not found at {}. See https://scarfbench.info/quickstart/#agenttoml-file",
+            agent_toml_path.display()
+        ),
+        Err(e) => anyhow::bail!(
+            "failed to read {}: {}",
+            agent_toml_path.display(),
+            e
+        ),
+    };
 
+    for (eval_key, eval_group) in eval_layout {
         let pool = ThreadPoolBuilder::new()
             .num_threads(std::cmp::min(
                 eval_group.runs().len(),
@@ -48,7 +58,7 @@ pub fn dispatch_agent(
 
                     let result = Command::new("bash")
                         .arg("-lc")
-                        .arg("./run.sh")
+                        .arg(format!("./{}", agent_config.entrypoint))
                         .current_dir(agent_dir)
                         .env("SCARF_WORK_DIR", eval_instance.output())
                         .env("SCARF_WORKDIR", eval_instance.output())

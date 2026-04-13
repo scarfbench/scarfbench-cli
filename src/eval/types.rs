@@ -223,6 +223,8 @@ pub(super) struct RunMetaData {
     deploy_ok: TriState,
     #[serde(default = "UNK")]
     test_pass_percent: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
 }
 impl RunMetaData {
     pub(super) fn new(
@@ -233,6 +235,7 @@ impl RunMetaData {
         repeat: impl Into<u32>,
         source_framework: impl Into<String>,
         target_framework: impl Into<String>,
+        model: Option<String>,
     ) -> Self {
         Self {
             agent: agent.into(),
@@ -245,6 +248,7 @@ impl RunMetaData {
             compile_ok: TriState::Unk,
             deploy_ok: TriState::Unk,
             test_pass_percent: UNK(),
+            model,
         }
     }
     pub(super) fn source_framework(&self) -> String {
@@ -257,4 +261,14 @@ impl RunMetaData {
         self.status = status;
         self
     }
+}
+
+/// A mapping for agent.toml file that has a lot of eval metadata for evaluation
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AgentConfig {
+    pub solution_name: String,
+    pub model: String,
+    pub entrypoint: String,
+    #[serde(default)]
+    pub description: Option<String>,
 }

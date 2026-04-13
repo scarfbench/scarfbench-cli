@@ -67,6 +67,21 @@ pub struct Metadata {
     /// Whether this run needs to be rerun due to inconclusive results
     #[serde(default, skip_serializing_if = "is_false")]
     pub inconclusive: bool,
+    /// Proper agent name (e.g. "claude-code"), distinct from folder-derived `agent`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solution_name: Option<String>,
+    /// LLM model identifier (e.g. "claude-opus-4-6")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Optional variant discriminator (e.g. "with-skills", "with-claude-md")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+}
+
+/// This struct holds the metadata.json of the tests we have in the smoke dir
+#[derive(Debug, Clone, Serialize, Builder, Deserialize)]
+pub struct SmokeTestMetadata {
+    pub(crate) num_smoke_tests: u32,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -103,27 +118,34 @@ pub enum FailureCategory {
 }
 
 /// New types for leaderboard
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Leaderboard {
     pub solution: LeaderboardSolution,
     pub results: Vec<LeaderboardResults>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LeaderboardSolution {
-    name: String,
-    model: String,
-    date: String,
-}
-pub struct LeaderboardResults {
-    from: String,
-    to: String,
-    layer: String,
-    app: String,
-    repeats: Vec<Repeat>,
+    pub agent: String,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    pub date: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LeaderboardResults {
+    pub from: String,
+    pub to: String,
+    pub layer: String,
+    pub app: String,
+    pub repeats: Vec<Repeat>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Repeat {
-    compile: bool,
-    run: bool,
-    tests_passed: usize,
-    tests_total: usize,
+    pub compile: bool,
+    pub run: bool,
+    pub tests_passed: u32,
+    pub tests_total: u32,
 }

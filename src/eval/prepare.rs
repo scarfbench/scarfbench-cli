@@ -7,7 +7,7 @@ use std::{
 
 use crate::eval::run::EvalRunArgs;
 use crate::eval::types::{
-    EvalGroup, EvalInstance, EvalKey, EvalLayout, RunMetaData,
+    AgentConfig, EvalGroup, EvalInstance, EvalKey, EvalLayout, RunMetaData,
 };
 use anyhow::Result;
 use walkdir::WalkDir;
@@ -25,16 +25,18 @@ pub fn prepare_harness(args: &EvalRunArgs) -> Result<EvalLayout> {
 fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
     let mut evals: HashMap<EvalKey, EvalGroup> = HashMap::new();
 
-    // We'll assume for now that the agent name is the directory name where the agent is (I can change this later if needed)
-    let agent_name = args
-        .agent_dir
-        .file_name()
-        .and_then(|f| f.to_str())
-        .ok_or_else(|| {
-            anyhow::anyhow!("--agent-dir must be a valid UTF-8 name!")
-        })?
-        .to_string();
-
+    // agent.toml is the single source of truth for the agent's identity, model, and entrypoint.
+    let agent_toml_path = args.agent_dir.join("agent.toml");
+    let agent_config: AgentConfig = match fs::read_to_string(&agent_toml_path) {
+        Ok(s) => toml::from_str(&s).map_err(|e| {
+            anyhow::anyhow!("failed to parse {}: {}", agent_toml_path.display(), e)
+        })?,
+        Err(_) => anyhow::bail!(
+            "agent.toml not found at {}. See https://scarfbench.info/quickstart/#agenttoml-file",
+            agent_toml_path.display()
+        ),
+    };
+    let agent_name = agent_config.solution_name.clone();
     log::debug!("Using agent name: {}", &agent_name);
 
     // Iterate over all the selected layers and pick the apps chosen by the user
@@ -139,6 +141,7 @@ fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
                 &eval_instance_dir,
                 &eval_instance_key,
                 &run,
+                &agent_config,
             ) {
                 Ok(_) => {
                     log::debug!(
@@ -232,6 +235,7 @@ fn create_eval_metadata(
     eval_instance_dir: &Path,
     eval_key: &EvalKey,
     run: &u32,
+    agent_config: &AgentConfig,
 ) -> Result<()> {
     let metadata: RunMetaData = RunMetaData::new(
         eval_key.agent(),
@@ -241,6 +245,7 @@ fn create_eval_metadata(
         run.to_owned(),
         eval_key.source_framework(),
         eval_key.target_framework(),
+        Some(agent_config.model.clone()),
     );
     // Generate a JSON String (that's prettified)
     let json = serde_json::to_string_pretty(&metadata)?;

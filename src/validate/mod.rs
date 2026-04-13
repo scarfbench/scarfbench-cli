@@ -6,6 +6,7 @@ use kdam::BarExt;
 use kdam::term;
 use owo_colors::OwoColorize;
 use rayon::prelude::*;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
@@ -20,6 +21,7 @@ use wait_timeout::ChildExt;
 use walkdir::WalkDir;
 
 use crate::utils::progress_bar::ProgressBar;
+use crate::validate::types::LeaderboardResults;
 
 use regex::Regex;
 
@@ -38,8 +40,17 @@ pub struct ValidateArgs {
     )]
     pub timeout: u64,
 
-    #[arg(long, help = "Save a leaderboard JSON file.")]
-    pub leaderboard_out: Option<bool>,
+    #[arg(
+        long,
+        help = "If set, write a leaderboard JSON file into the conversions dir."
+    )]
+    pub leaderboard_out: bool,
+
+    #[arg(
+        long,
+        help = "If set, skip running `make test` and only re-parse existing run.log files."
+    )]
+    pub dont_rerun: bool,
 }
 
 // Each worker will send back to progress bar thread one of these
@@ -134,12 +145,15 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                                     .starts_with("run_")
                         })
                         .try_fold(Vec::new(), |mut log_paths, subdir| {
-                            let log_path =
+                            let log_path = if args.dont_rerun {
+                                subdir.join("validation").join("run.log")
+                            } else {
                                 copy_validation_harness_and_run_make_test(
                                     &args.validations_dir,
                                     &subdir,
                                     args.timeout,
-                                )?;
+                                )?
+                            };
                             log_paths.push(log_path);
                             Ok(log_paths)
                         })
@@ -149,9 +163,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                 Ok(_) => {
                     let _ = tx.send(UiMessage::Log(format!(
                         "{}\t{}",
-                        format!("{}", "[INFO]".to_string())
-                            .bold()
-                            .bright_cyan(),
+                        "[INFO]".to_string().bold().bright_cyan(),
                         format!(
                             "Successfully validated {}",
                             dir.to_string_lossy()
@@ -163,9 +175,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                 Err(e) => {
                     let _ = tx.send(UiMessage::Log(format!(
                         "{}\t{}",
-                        format!("{}", "[ERROR]".to_string())
-                            .bold()
-                            .bright_magenta(),
+                        "[ERROR]".to_string().bold().bright_magenta(),
                         format!("{}", e).bold().bright_magenta()
                     )));
                 },
@@ -185,12 +195,120 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     for log_path in
         collected_log_paths.into_iter().filter_map(Result::ok).flatten()
     {
-        parse_run_log_and_update_metadata(&log_path)?;
+        parse_run_log_and_update_metadata(&log_path, &args.validations_dir)?;
     }
 
     // If the leaderboard is set, then save the leaderboard output per model
-
+    if args.leaderboard_out {
+        generate_leaderboard(&dirs, &args.conversions_dir)?;
+    }
     Ok(0)
+}
+
+fn generate_leaderboard(
+    dirs: &[PathBuf],
+    conversions_dir: &Path,
+) -> anyhow::Result<()> {
+    // -> types::Leaderboard {
+    // Get the name, model, date to build types::LeaderboardSolution
+    // For the results, from, to, layer, and app remain the same while repeats vectors over types::Repeat
+    // so index metadata by <<from, to, layer, app>> then for each run compute the repeat.
+    // We can use BTreeMap<()>
+
+    let metadatas: Vec<types::Metadata> = dirs
+        .iter()
+        // Flatten and collect all inner directories
+        .flat_map(|d| fs::read_dir(d).ok().into_iter().flatten())
+        // Skip failing paths
+        .filter_map(Result::ok)
+        // Get the path
+        .map(|f| f.path())
+        // Ensure we select only directories that start with run_*
+        .filter(|p| p.file_name().and_then(|f| f.to_str()).is_some_and(|f| f.starts_with("run_")))
+        // Read and deserialize metadata file
+        .filter_map(|subdir| {
+                  let path = subdir.join("metadata.json");
+                  let file = File::open(&path).ok()?;
+                  serde_json::from_reader(file).ok()
+        }).collect();
+
+    // Create a BTree to hold the mappings
+    let mut groups: BTreeMap<
+        (String, String, String, String),
+        Vec<types::Metadata>,
+    > = BTreeMap::new();
+
+    metadatas.into_iter().for_each(|metadata| {
+        let key = (
+            metadata.source_framework.to_string(),
+            metadata.target_framework.to_string(),
+            metadata.layer.clone(),
+            metadata.app.clone(),
+        );
+        groups.entry(key).or_default().push(metadata);
+    });
+
+    // Pull solution info from any one metadata entry — they're uniform across the run.
+    let sample =
+        groups.values().next().and_then(|v| v.first()).ok_or_else(|| {
+            anyhow!("no metadata.json files found under conversions dir")
+        })?;
+
+    let solution = types::LeaderboardSolution {
+        agent: sample
+            .solution_name
+            .clone()
+            .unwrap_or_else(|| sample.agent.clone()),
+        model: sample.model.clone().unwrap_or_default(),
+        variant: sample.variant.clone(),
+        date: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+    };
+
+    let results: Vec<LeaderboardResults> = groups
+        .into_iter()
+        .map(|((from, to, layer, app), mut repeats)| {
+            repeats.sort_by_key(|m| m.repeat);
+            types::LeaderboardResults {
+                from,
+                to,
+                layer,
+                app,
+                repeats: repeats
+                    .into_iter()
+                    .map(|m| types::Repeat {
+                        compile: matches!(
+                            m.compile_ok,
+                            types::ValidationOutcome::True
+                        ),
+                        run: matches!(
+                            m.deploy_ok,
+                            types::ValidationOutcome::True
+                        ),
+                        tests_passed: m.tests_passed.unwrap_or(0),
+                        tests_total: m.num_smoke_tests.unwrap_or(0),
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+
+    let leaderboard = types::Leaderboard { solution, results };
+
+    let agent_slug = leaderboard.solution.agent.replace(' ', "-");
+    let model_slug = leaderboard.solution.model.replace(' ', "-");
+    let filename = match &leaderboard.solution.variant {
+        Some(v) if !v.is_empty() => {
+            format!("{}__{}__{}.json", agent_slug, model_slug, v.replace(' ', "-"))
+        }
+        _ => format!("{}__{}.json", agent_slug, model_slug),
+    };
+    let out_path = conversions_dir.join(filename);
+    let mut f = File::create(&out_path).with_context(|| {
+        format!("failed to create leaderboard file {}", out_path.display())
+    })?;
+    f.write_all(serde_json::to_string_pretty(&leaderboard)?.as_bytes())?;
+    log::info!("Wrote leaderboard to {}", out_path.display());
+    Ok(())
 }
 
 /// Run `make test` on the deployed directory.
@@ -209,8 +327,14 @@ fn copy_validation_harness_and_run_make_test(
         .map(|e| e.path())
         .filter(|p| {
             p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                matches!(n, "Makefile" | "makefile" | "Dockerfile" | "smoke.py")
-                    || (n == "smoke" && p.is_dir())
+                matches!(
+                    n,
+                    "Makefile"
+                        | "makefile"
+                        | "Dockerfile"
+                        | "smoke.py"
+                        | "metadata.json"
+                ) || (n == "smoke" && p.is_dir())
             })
         })
         .for_each(|src_path| {
@@ -223,6 +347,19 @@ fn copy_validation_harness_and_run_make_test(
 
             let copy_result = if src_path.is_dir() {
                 copy_dir_recursive(&src_path, &dst_path)
+                    .expect("TODO: panic message");
+                // Since we are copying smoke/ directory, we also need to copy the smoke/../metadata.json over
+                fs::copy(
+                    src_path
+                        .parent()
+                        .expect(
+                            "Unable to access the parent dir of current smoke",
+                        )
+                        .join("metadata.json"),
+                    &dst_path,
+                )
+                .map(|_| ())
+                .map_err(anyhow::Error::from)
             } else {
                 fs::copy(&src_path, &dst_path)
                     .map(|_| ())
@@ -280,7 +417,7 @@ fn copy_validation_harness_and_run_make_test(
 }
 
 /// Look at the log file and determine whether the run passed, or at what stage it failed
-fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
+fn parse_run_log_and_update_metadata(log_path: &Path, validations_dir: &Path) -> anyhow::Result<()> {
     let log = fs::read_to_string(log_path).with_context(|| {
         format!("failed to read run log at {}", log_path.display())
     })?;
@@ -302,6 +439,29 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     .with_context(|| {
         format!("failed to parse metadata JSON at {}", metadata_path.display())
     })?;
+
+    let smoke_test_metadata_path = validations_dir
+        .join(&metadata.layer)
+        .join(&metadata.app)
+        .join(metadata.target_framework.to_string())
+        .join("metadata.json");
+
+    match File::open(&smoke_test_metadata_path) {
+        Ok(f) => {
+            let smoke: types::SmokeTestMetadata = serde_json::from_reader(f)
+                .with_context(|| {
+                    format!(
+                        "failed to parse smoke test metadata at {}",
+                        smoke_test_metadata_path.display()
+                    )
+                })?;
+            metadata.num_smoke_tests = Some(smoke.num_smoke_tests);
+        },
+        Err(_) => log::warn!(
+            "No smoke test metadata at {} — leaving num_smoke_tests unset",
+            smoke_test_metadata_path.display()
+        ),
+    }
 
     // Analyze compile, deploy, and test outcomes
     let (compile_outcome, compile_reason, compile_category) =
