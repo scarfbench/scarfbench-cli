@@ -37,6 +37,9 @@ pub struct ValidateArgs {
         help = "How much time before we hit evaluation timeout (minutes)."
     )]
     pub timeout: u64,
+
+    #[arg(long, help = "Save a leaderboard JSON file.")]
+    pub leaderboard_out: Option<bool>,
 }
 
 // Each worker will send back to progress bar thread one of these
@@ -184,6 +187,8 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     {
         parse_run_log_and_update_metadata(&log_path)?;
     }
+
+    // If the leaderboard is set, then save the leaderboard output per model
 
     Ok(0)
 }

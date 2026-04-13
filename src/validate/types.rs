@@ -46,6 +46,9 @@ pub struct Metadata {
     pub source_framework: Framework,
     /// The target framework
     pub target_framework: Framework,
+    /// Number of known test cases (skip if not present while reading)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_smoke_tests: Option<u32>,
     /// Compile status
     #[serde(default)]
     pub compile_ok: ValidationOutcome,
@@ -97,4 +100,30 @@ pub enum FailureCategory {
     Timeout,
     MissingLog,
     Unknown,
+}
+
+/// New types for leaderboard
+pub struct Leaderboard {
+    pub solution: LeaderboardSolution,
+    pub results: Vec<LeaderboardResults>,
+}
+
+pub struct LeaderboardSolution {
+    name: String,
+    model: String,
+    date: String,
+}
+pub struct LeaderboardResults {
+    from: String,
+    to: String,
+    layer: String,
+    app: String,
+    repeats: Vec<Repeat>,
+}
+
+pub struct Repeat {
+    compile: bool,
+    run: bool,
+    tests_passed: usize,
+    tests_total: usize,
 }
