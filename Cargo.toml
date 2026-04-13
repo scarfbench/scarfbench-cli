@@ -19,12 +19,6 @@ include = [
     "LICENSE*",
 ]
 
-[package.metadata.wix]
-upgrade-guid = "A803AB62-0AD5-4E0B-90A3-300CCB70C6C8"
-path-guid = "ED1637ED-B22A-4955-AC24-AD2419D784B9"
-license = false
-eula = false
-
 [package.metadata.dist]
 formula = "scarfbench-cli"
 
