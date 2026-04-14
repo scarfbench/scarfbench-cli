@@ -163,14 +163,23 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                     .map(|e| e.path())
                     .filter(|p| p.is_dir() && p.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.starts_with("run_")))
                     .try_for_each(|subdir| {
-                        let result = if reanalyze {
-                            reanalyze_existing_logs(&subdir)
+                        let result = if args.dont_rerun {
+                            // Just parse existing logs without running tests
+                            let log_path = subdir.join("validation").join("run.log");
+                            if log_path.exists() {
+                                parse_run_log_and_update_metadata(&log_path, &args.validations_dir)
+                            } else {
+                                Ok(())
+                            }
                         } else {
+                            // Run the test and then parse the log
                             copy_validation_harness_and_run_make_test(
                                 &args.validations_dir,
                                 &subdir,
                                 args.timeout,
-                            )
+                            ).and_then(|log_path| {
+                                parse_run_log_and_update_metadata(&log_path, &args.validations_dir)
+                            })
                         };
 
                         // After processing, collect statistics from metadata
@@ -192,73 +201,30 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 
         match res {
             Ok(_) => {
-                let action = if reanalyze { "reanalyzed" } else { "validated" };
+                let action = if args.dont_rerun { "reanalyzed" } else { "validated" };
                 let _ = tx.send(UiMessage::Log(format!(
                     "{}\t{}",
-                    format!("{}", "[INFO]".to_string()).bold().bright_cyan(),
-    // dispatch parallel make test runs, collecting log paths for phase 2
-    let collected_log_paths: Vec<anyhow::Result<Vec<PathBuf>>> = dirs
-        .par_iter()
-        .map_with(tx.clone(), |tx, dir| {
-            let res: anyhow::Result<Vec<PathBuf>> = fs::read_dir(dir)
-                .with_context(|| {
+                    "[INFO]".to_string().bold().bright_cyan(),
                     format!(
-                        "Failed to read sub directories of {}",
-                        dir.display()
+                        "Successfully {} {}",
+                        action,
+                        dir.to_string_lossy()
                     )
-                })
-                .and_then(|entries| {
-                    entries
-                        .filter_map(Result::ok) // ignore any subdirs that are not readable. This shouldn't happen but still...
-                        .map(|e| e.path())
-                        .filter(|p| {
-                            p.is_dir()
-                                && p.file_name()
-                                    .expect("Unable to open the directory")
-                                    .to_string_lossy()
-                                    .starts_with("run_")
-                        })
-                        .try_fold(Vec::new(), |mut log_paths, subdir| {
-                            let log_path = if args.dont_rerun {
-                                subdir.join("validation").join("run.log")
-                            } else {
-                                copy_validation_harness_and_run_make_test(
-                                    &args.validations_dir,
-                                    &subdir,
-                                    args.timeout,
-                                )?
-                            };
-                            log_paths.push(log_path);
-                            Ok(log_paths)
-                        })
-                });
+                    .bold()
+                    .bright_white()
+                )));
+            },
+            Err(e) => {
+                let _ = tx.send(UiMessage::Log(format!(
+                    "{}\t{}",
+                    "[ERROR]".to_string().bold().bright_magenta(),
+                    format!("{}", e).bold().bright_magenta()
+                )));
+            },
+        }
 
-            match &res {
-                Ok(_) => {
-                    let _ = tx.send(UiMessage::Log(format!(
-                        "{}\t{}",
-                        "[INFO]".to_string().bold().bright_cyan(),
-                        format!(
-                            "Successfully validated {}",
-                            dir.to_string_lossy()
-                        )
-                        .bold()
-                        .bright_white()
-                    )));
-                },
-                Err(e) => {
-                    let _ = tx.send(UiMessage::Log(format!(
-                        "{}\t{}",
-                        "[ERROR]".to_string().bold().bright_magenta(),
-                        format!("{}", e).bold().bright_magenta()
-                    )));
-                },
-            }
-
-            let _ = tx.send(UiMessage::Tick(1));
-            res
-        })
-        .collect();
+        let _ = tx.send(UiMessage::Tick(1));
+    });
 
     // Thats it---discard any stray transmitters
     drop(tx);
@@ -276,14 +242,6 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                 .with_context(|| format!("Failed to write cost JSON to {}", json_path.display()))?;
             log::info!("Cost summary written to {}", json_path.display());
         }
-    }
-
-    // parse all log files and update metadata.json, now that every
-    // make test has finished.
-    for log_path in
-        collected_log_paths.into_iter().filter_map(Result::ok).flatten()
-    {
-        parse_run_log_and_update_metadata(&log_path, &args.validations_dir)?;
     }
 
     // If the leaderboard is set, then save the leaderboard output per model

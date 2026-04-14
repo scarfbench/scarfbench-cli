@@ -274,12 +274,12 @@ impl ConversionStats {
         }
 
         // Tests: only PASS(100%) = pass, everything else = fail
-        if metadata.test_pass_percent.contains("100%")
-            || metadata.test_pass_percent.ends_with("(100.0%)") {
-            self.test_pass += 1;
-        } else if metadata.test_pass_percent != "UNK"
-            && !metadata.test_pass_percent.is_empty() {
-            self.test_fail += 1;
+        if let (Some(passed), Some(total)) = (metadata.tests_passed, metadata.num_smoke_tests) {
+            if total > 0 && passed == total {
+                self.test_pass += 1;
+            } else if total > 0 {
+                self.test_fail += 1;
+            }
         }
 
         // Add usage data if available
@@ -505,6 +505,8 @@ impl ConversionCostCalculator {
 
         serde_json::to_string_pretty(&JsonOutput { summary }).unwrap_or_else(|_| "{}".to_string())
     }
+}
+
 /// New types for leaderboard
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Leaderboard {

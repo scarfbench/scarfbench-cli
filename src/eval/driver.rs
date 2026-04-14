@@ -1,6 +1,5 @@
-use crate::eval::types::{EvalLayout, RunMetaData};
-use crate::validate::types::{ConversionCostCalculator, Metadata};
 use crate::eval::types::{AgentConfig, EvalLayout, RunMetaData};
+use crate::validate::types::{ConversionCostCalculator, Metadata};
 use std::io::ErrorKind;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
