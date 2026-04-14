@@ -121,14 +121,28 @@ pub fn dispatch_agent(
                         )?;
                     }
 
-                    // Collect cost statistics from agent.out if calculator is provided
-                    // The agent.out file contains stream-json output with usage data from each API call
+                    // Write individual cost file for this run if calculator is provided
                     if let Some(ref calc) = cost_calculator {
                         if let Ok(metadata_content) = fs::read_to_string(eval_instance.root().join("metadata.json")) {
                             if let Ok(metadata) = serde_json::from_str::<Metadata>(&metadata_content) {
                                 let agent_out_path = eval_instance.validation().join("agent.out");
-                                if let Ok(mut calc_lock) = calc.lock() {
-                                    calc_lock.add_conversion(&metadata, &agent_out_path);
+                                
+                                // Create a temporary calculator for this single run
+                                if let Ok(calc_lock) = calc.lock() {
+                                    if let Some(model_costs) = calc_lock.get_model_costs() {
+                                        let mut run_calc = ConversionCostCalculator::with_costs(model_costs.clone());
+                                        run_calc.add_conversion(&metadata, &agent_out_path);
+                                        run_calc.finalize_costs();
+                                        
+                                        // Write cost file to run directory
+                                        let cost_file = eval_instance.root().join("costs.json");
+                                        let json_output = run_calc.to_json();
+                                        if let Err(e) = fs::write(&cost_file, json_output) {
+                                            log::warn!("Failed to write cost file to {}: {}", cost_file.display(), e);
+                                        } else {
+                                            log::debug!("Cost file written to {}", cost_file.display());
+                                        }
+                                    }
                                 }
                             }
                         }

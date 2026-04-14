@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use anyhow::Context;
 use clap::{ArgAction, Args};
 use serde::Serialize;
 
@@ -149,20 +148,10 @@ pub fn run(mut args: EvalRunArgs) -> anyhow::Result<i32> {
     log::debug!("Dispatching Agent(s)");
     driver::dispatch_agent(&args.agent_dir, &eval_layout, cost_calculator.clone())?;
 
-    // Print cost summary and optionally write JSON output
-    if let Some(calc) = cost_calculator {
-        if let Ok(mut calc_lock) = calc.lock() {
-            calc_lock.finalize_costs();
-            calc_lock.print_summary();
-            
-            // Output JSON if requested
-            if let Some(ref json_path) = args.cost_json_output {
-                let json_output = calc_lock.to_json();
-                std::fs::write(json_path, json_output)
-                    .with_context(|| format!("Failed to write cost JSON to {}", json_path.display()))?;
-                log::info!("Cost summary written to {}", json_path.display());
-            }
-        }
+    // Note: Individual cost files are now written per run in driver::dispatch_agent
+    // Each run_X directory will have its own costs.json file
+    if cost_calculator.is_some() {
+        log::info!("Individual cost files written to each run_X/costs.json directory");
     }
 
     Ok(0)

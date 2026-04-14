@@ -343,6 +343,10 @@ impl ConversionCostCalculator {
         }
     }
 
+    pub fn get_model_costs(&self) -> Option<&ModelCosts> {
+        self.model_costs.as_ref()
+    }
+
     pub fn add_conversion(&mut self, metadata: &Metadata, agent_out_path: &Path) {
         let key = ConversionKey {
             agent: metadata.agent.clone(),
