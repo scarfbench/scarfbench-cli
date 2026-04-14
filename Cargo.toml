@@ -19,12 +19,6 @@ include = [
     "LICENSE*",
 ]
 
-[package.metadata.wix]
-upgrade-guid = "A803AB62-0AD5-4E0B-90A3-300CCB70C6C8"
-path-guid = "ED1637ED-B22A-4955-AC24-AD2419D784B9"
-license = false
-eula = false
-
 [package.metadata.dist]
 formula = "scarfbench-cli"
 
@@ -54,6 +48,7 @@ clap = { version = "4.5.60", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"] }
 reqwest = { version = "0.13.2", features = ["blocking", "json"] }
 kdam = { version = "0.6.4", features = ["derive", "rich", "spinner"] }
+toml = "1.1.2"
 
 [dev-dependencies]
 tempfile = "3.26.0"

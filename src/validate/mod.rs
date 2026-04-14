@@ -1,11 +1,12 @@
 pub mod types;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Args;
-use kdam::term;
 use kdam::BarExt;
+use kdam::term;
 use owo_colors::OwoColorize;
 use rayon::prelude::*;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
@@ -20,6 +21,7 @@ use wait_timeout::ChildExt;
 use walkdir::WalkDir;
 
 use crate::utils::progress_bar::ProgressBar;
+use crate::validate::types::LeaderboardResults;
 
 use regex::Regex;
 
@@ -40,8 +42,7 @@ pub struct ValidateArgs {
 
     #[arg(
         long,
-        default_value_t = false,
-        help = "Only reanalyze existing run.log files without running make test again"
+        help = "If set, write a leaderboard JSON file into the conversions dir."
     )]
     pub reanalyze: bool,
 
@@ -56,6 +57,15 @@ pub struct ValidateArgs {
         help = "Output cost summary as JSON to the specified file"
     )]
     pub cost_json_output: Option<PathBuf>,
+
+    pub leaderboard_out: bool,
+
+    #[arg(
+        long,
+        help = "If set, skip running `make test` and only re-parse existing run.log files."
+    )]
+    pub dont_rerun: bool,
+
 }
 
 // Each worker will send back to progress bar thread one of these
@@ -77,7 +87,6 @@ enum UiMessage {
 /// g. Parallelize the whole pipeline with rayon.
 pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     let conversions_dir = args.conversions_dir.clone();
-    let reanalyze = args.reanalyze;
 
     let dirs: Vec<_> = WalkDir::new(&conversions_dir)
         .min_depth(1)
@@ -122,14 +131,12 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 
     // Set up the terminal printer aggregrator that will aggregate the responses
     // from each of my worker and create/update a progress bar
-    let action =
-        if reanalyze { "Reanalyzing Logs" } else { "Evaluating Conversions" };
     let tui = thread::spawn(move || -> anyhow::Result<()> {
         // Set up my terminal
         term::init(std::io::stderr().is_terminal());
 
         // initialize our progress bar
-        let mut pb = total.progress(action, " Eval");
+        let mut pb = total.progress("Evaluating Conversions", " Eval");
 
         while let Ok(msg) = rx.recv() {
             match msg {
@@ -189,28 +196,70 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                 let _ = tx.send(UiMessage::Log(format!(
                     "{}\t{}",
                     format!("{}", "[INFO]".to_string()).bold().bright_cyan(),
+    // dispatch parallel make test runs, collecting log paths for phase 2
+    let collected_log_paths: Vec<anyhow::Result<Vec<PathBuf>>> = dirs
+        .par_iter()
+        .map_with(tx.clone(), |tx, dir| {
+            let res: anyhow::Result<Vec<PathBuf>> = fs::read_dir(dir)
+                .with_context(|| {
                     format!(
-                        "Successfully {} {}",
-                        action,
-                        dir.to_string_lossy()
+                        "Failed to read sub directories of {}",
+                        dir.display()
                     )
-                    .bold()
-                    .bright_white()
-                )));
-            },
-            Err(e) => {
-                let _ = tx.send(UiMessage::Log(format!(
-                    "{}\t{}",
-                    format!("{}", "[ERROR]".to_string())
-                        .bold()
-                        .bright_magenta(),
-                    format!("{}", e).bold().bright_magenta()
-                )));
-            },
-        }
+                })
+                .and_then(|entries| {
+                    entries
+                        .filter_map(Result::ok) // ignore any subdirs that are not readable. This shouldn't happen but still...
+                        .map(|e| e.path())
+                        .filter(|p| {
+                            p.is_dir()
+                                && p.file_name()
+                                    .expect("Unable to open the directory")
+                                    .to_string_lossy()
+                                    .starts_with("run_")
+                        })
+                        .try_fold(Vec::new(), |mut log_paths, subdir| {
+                            let log_path = if args.dont_rerun {
+                                subdir.join("validation").join("run.log")
+                            } else {
+                                copy_validation_harness_and_run_make_test(
+                                    &args.validations_dir,
+                                    &subdir,
+                                    args.timeout,
+                                )?
+                            };
+                            log_paths.push(log_path);
+                            Ok(log_paths)
+                        })
+                });
 
-        let _ = tx.send(UiMessage::Tick(1));
-    });
+            match &res {
+                Ok(_) => {
+                    let _ = tx.send(UiMessage::Log(format!(
+                        "{}\t{}",
+                        "[INFO]".to_string().bold().bright_cyan(),
+                        format!(
+                            "Successfully validated {}",
+                            dir.to_string_lossy()
+                        )
+                        .bold()
+                        .bright_white()
+                    )));
+                },
+                Err(e) => {
+                    let _ = tx.send(UiMessage::Log(format!(
+                        "{}\t{}",
+                        "[ERROR]".to_string().bold().bright_magenta(),
+                        format!("{}", e).bold().bright_magenta()
+                    )));
+                },
+            }
+
+            let _ = tx.send(UiMessage::Tick(1));
+            res
+        })
+        .collect();
+
     // Thats it---discard any stray transmitters
     drop(tx);
     tui.join().map_err(|e| anyhow!("TUI panicked: {:?}", e))??;
@@ -229,30 +278,134 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
         }
     }
 
+    // parse all log files and update metadata.json, now that every
+    // make test has finished.
+    for log_path in
+        collected_log_paths.into_iter().filter_map(Result::ok).flatten()
+    {
+        parse_run_log_and_update_metadata(&log_path, &args.validations_dir)?;
+    }
+
+    // If the leaderboard is set, then save the leaderboard output per model
+    if args.leaderboard_out {
+        generate_leaderboard(&dirs, &args.conversions_dir)?;
+    }
     Ok(0)
 }
 
-/// Reanalyze existing run.log files without running make test
-fn reanalyze_existing_logs(conversions_dir: &PathBuf) -> anyhow::Result<()> {
-    let log_path = conversions_dir.join("validation").join("run.log");
+fn generate_leaderboard(
+    dirs: &[PathBuf],
+    conversions_dir: &Path,
+) -> anyhow::Result<()> {
+    // -> types::Leaderboard {
+    // Get the name, model, date to build types::LeaderboardSolution
+    // For the results, from, to, layer, and app remain the same while repeats vectors over types::Repeat
+    // so index metadata by <<from, to, layer, app>> then for each run compute the repeat.
+    // We can use BTreeMap<()>
 
-    if !log_path.exists() {
-        return Err(anyhow::anyhow!(
-            "No run.log found at {}. Run without --reanalyze first.",
-            log_path.display()
-        ));
-    }
+    let metadatas: Vec<types::Metadata> = dirs
+        .iter()
+        // Flatten and collect all inner directories
+        .flat_map(|d| fs::read_dir(d).ok().into_iter().flatten())
+        // Skip failing paths
+        .filter_map(Result::ok)
+        // Get the path
+        .map(|f| f.path())
+        // Ensure we select only directories that start with run_*
+        .filter(|p| p.file_name().and_then(|f| f.to_str()).is_some_and(|f| f.starts_with("run_")))
+        // Read and deserialize metadata file
+        .filter_map(|subdir| {
+                  let path = subdir.join("metadata.json");
+                  let file = File::open(&path).ok()?;
+                  serde_json::from_reader(file).ok()
+        }).collect();
 
-    parse_run_log_and_update_metadata(&log_path)?;
+    // Create a BTree to hold the mappings
+    let mut groups: BTreeMap<
+        (String, String, String, String),
+        Vec<types::Metadata>,
+    > = BTreeMap::new();
+
+    metadatas.into_iter().for_each(|metadata| {
+        let key = (
+            metadata.source_framework.to_string(),
+            metadata.target_framework.to_string(),
+            metadata.layer.clone(),
+            metadata.app.clone(),
+        );
+        groups.entry(key).or_default().push(metadata);
+    });
+
+    // Pull solution info from any one metadata entry — they're uniform across the run.
+    let sample =
+        groups.values().next().and_then(|v| v.first()).ok_or_else(|| {
+            anyhow!("no metadata.json files found under conversions dir")
+        })?;
+
+    let solution = types::LeaderboardSolution {
+        agent: sample
+            .solution_name
+            .clone()
+            .unwrap_or_else(|| sample.agent.clone()),
+        model: sample.model.clone().unwrap_or_default(),
+        variant: sample.variant.clone(),
+        date: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+    };
+
+    let results: Vec<LeaderboardResults> = groups
+        .into_iter()
+        .map(|((from, to, layer, app), mut repeats)| {
+            repeats.sort_by_key(|m| m.repeat);
+            types::LeaderboardResults {
+                from,
+                to,
+                layer,
+                app,
+                repeats: repeats
+                    .into_iter()
+                    .map(|m| types::Repeat {
+                        compile: matches!(
+                            m.compile_ok,
+                            types::ValidationOutcome::True
+                        ),
+                        run: matches!(
+                            m.deploy_ok,
+                            types::ValidationOutcome::True
+                        ),
+                        tests_passed: m.tests_passed.unwrap_or(0),
+                        tests_total: m.num_smoke_tests.unwrap_or(0),
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+
+    let leaderboard = types::Leaderboard { solution, results };
+
+    let agent_slug = leaderboard.solution.agent.replace(' ', "-");
+    let model_slug = leaderboard.solution.model.replace(' ', "-");
+    let filename = match &leaderboard.solution.variant {
+        Some(v) if !v.is_empty() => {
+            format!("{}__{}__{}.json", agent_slug, model_slug, v.replace(' ', "-"))
+        }
+        _ => format!("{}__{}.json", agent_slug, model_slug),
+    };
+    let out_path = conversions_dir.join(filename);
+    let mut f = File::create(&out_path).with_context(|| {
+        format!("failed to create leaderboard file {}", out_path.display())
+    })?;
+    f.write_all(serde_json::to_string_pretty(&leaderboard)?.as_bytes())?;
+    log::info!("Wrote leaderboard to {}", out_path.display());
     Ok(())
 }
 
-/// Run `make test` on the deployed directory
+/// Run `make test` on the deployed directory.
+/// Returns the path to the run.log file so the caller can parse it later.
 fn copy_validation_harness_and_run_make_test(
     validations_dir: &PathBuf,
     conversions_dir: &PathBuf,
     timeout_in_minutes: u64,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<PathBuf> {
     // --- First we will copy over the test harness from the benchmark directory ---
     let (layer, app, framework) = read_metadata_json(conversions_dir)?;
     let src = validations_dir.join(layer).join(app).join(framework);
@@ -262,8 +415,14 @@ fn copy_validation_harness_and_run_make_test(
         .map(|e| e.path())
         .filter(|p| {
             p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                matches!(n, "Makefile" | "makefile" | "Dockerfile" | "smoke.py")
-                    || (n == "smoke" && p.is_dir())
+                matches!(
+                    n,
+                    "Makefile"
+                        | "makefile"
+                        | "Dockerfile"
+                        | "smoke.py"
+                        | "metadata.json"
+                ) || (n == "smoke" && p.is_dir())
             })
         })
         .for_each(|src_path| {
@@ -276,6 +435,19 @@ fn copy_validation_harness_and_run_make_test(
 
             let copy_result = if src_path.is_dir() {
                 copy_dir_recursive(&src_path, &dst_path)
+                    .expect("TODO: panic message");
+                // Since we are copying smoke/ directory, we also need to copy the smoke/../metadata.json over
+                fs::copy(
+                    src_path
+                        .parent()
+                        .expect(
+                            "Unable to access the parent dir of current smoke",
+                        )
+                        .join("metadata.json"),
+                    &dst_path,
+                )
+                .map(|_| ())
+                .map_err(anyhow::Error::from)
             } else {
                 fs::copy(&src_path, &dst_path)
                     .map(|_| ())
@@ -322,21 +494,18 @@ fn copy_validation_harness_and_run_make_test(
         .wait_timeout(timeout)
         .context("couldn't spawn child with wait_timeout")?
     {
-        Some(_) => {
-            parse_run_log_and_update_metadata(&log_path)?;
-        },
+        Some(_) => {},
         None => {
             // Kill the process because we didn't get a status back...
             child.kill()?;
             child.wait()?; // Wait for the process to finish killing
-            parse_run_log_and_update_metadata(&log_path)?;
         },
     };
-    Ok(())
+    Ok(log_path)
 }
 
 /// Look at the log file and determine whether the run passed, or at what stage it failed
-fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
+fn parse_run_log_and_update_metadata(log_path: &Path, validations_dir: &Path) -> anyhow::Result<()> {
     let log = fs::read_to_string(log_path).with_context(|| {
         format!("failed to read run log at {}", log_path.display())
     })?;
@@ -359,6 +528,29 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
         format!("failed to parse metadata JSON at {}", metadata_path.display())
     })?;
 
+    let smoke_test_metadata_path = validations_dir
+        .join(&metadata.layer)
+        .join(&metadata.app)
+        .join(metadata.target_framework.to_string())
+        .join("metadata.json");
+
+    match File::open(&smoke_test_metadata_path) {
+        Ok(f) => {
+            let smoke: types::SmokeTestMetadata = serde_json::from_reader(f)
+                .with_context(|| {
+                    format!(
+                        "failed to parse smoke test metadata at {}",
+                        smoke_test_metadata_path.display()
+                    )
+                })?;
+            metadata.num_smoke_tests = Some(smoke.num_smoke_tests);
+        },
+        Err(_) => log::warn!(
+            "No smoke test metadata at {} — leaving num_smoke_tests unset",
+            smoke_test_metadata_path.display()
+        ),
+    }
+
     // Analyze compile, deploy, and test outcomes
     let (compile_outcome, compile_reason, compile_category) =
         analyze_compile(&log);
@@ -370,7 +562,7 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     // Update metadata
     metadata.compile_ok = compile_outcome;
     metadata.deploy_ok = deploy_outcome;
-    metadata.test_pass_percent = test_outcome;
+    metadata.tests_passed = test_outcome;
     metadata.inconclusive = inconclusive;
 
     // Set failure reason and category
@@ -392,27 +584,6 @@ fn parse_run_log_and_update_metadata(log_path: &Path) -> anyhow::Result<()> {
     // Priority: test > deploy > compile category
     metadata.failure_category =
         test_category.or(deploy_category).or(compile_category);
-
-    let failed_pattern = Regex::new(r"(\d+)\s+failed")?;
-    let passed_pattern = Regex::new(r"(\d+)\s+passed")?;
-
-    let failed: f64 = failed_pattern
-        .captures(&log)
-        .and_then(|c| c[1].parse().ok())
-        .unwrap_or(0.0);
-
-    let passed: f64 = passed_pattern
-        .captures(&log)
-        .and_then(|c| c[1].parse().ok())
-        .unwrap_or(0.0);
-
-    let total = passed + failed;
-    metadata.test_pass_percent = if total == 0.0 {
-        String::from("UNK")
-    } else {
-        let frac = (passed / total * 100.0 * 100.0).round() / 100.0;
-        format!("{} out of {} tests passed ({}%)", passed, total, frac)
-    };
     let mut metadata_file =
         File::create(&metadata_path).with_context(|| {
             format!(
@@ -672,10 +843,10 @@ fn analyze_deploy(
 fn analyze_tests(
     log: &str,
     deploy_ok: &types::ValidationOutcome,
-) -> (String, Option<String>, Option<types::FailureCategory>, bool) {
+) -> (Option<u32>, Option<String>, Option<types::FailureCategory>, bool) {
     if matches!(deploy_ok, types::ValidationOutcome::False) {
         return (
-            "0".to_string(),
+            Some(0),
             Some("Cannot test - deployment failed".to_string()),
             Some(types::FailureCategory::DeployDependency),
             false,
@@ -694,37 +865,34 @@ fn analyze_tests(
         let failed_re = Regex::new(r"(\d+) failed").unwrap();
         let error_re = Regex::new(r"(\d+) error").unwrap();
 
-        let passed: i32 = passed_re
+        let passed: u32 = passed_re
             .captures(summary)
             .and_then(|c| c[1].parse().ok())
             .unwrap_or(0);
-        let failed: i32 = failed_re
+        let failed: u32 = failed_re
             .captures(summary)
             .and_then(|c| c[1].parse().ok())
             .unwrap_or(0);
-        let errors: i32 = error_re
+        let errors: u32 = error_re
             .captures(summary)
             .and_then(|c| c[1].parse().ok())
             .unwrap_or(0);
 
         let total = passed + failed + errors;
         if total > 0 {
-            let pct = (passed as f64 / total as f64 * 100.0).round();
-            let pct_str = format!("{}", pct);
-
             if failed > 0 || errors > 0 {
                 let reason = format!(
                     "{} failed, {} errors, {} passed out of {} tests",
                     failed, errors, passed, total
                 );
                 return (
-                    pct_str,
+                    Some(passed),
                     Some(reason),
                     Some(types::FailureCategory::TestFailures),
                     false,
                 );
             } else {
-                return (pct_str, None, None, false);
+                return (Some(passed), None, None, false);
             }
         }
     }
@@ -734,7 +902,7 @@ fn analyze_tests(
         let reason =
             "Test process killed (Error 137 - likely OOM/timeout)".to_string();
         return (
-            "UNK".to_string(),
+            None,
             Some(reason),
             Some(types::FailureCategory::TestTimeoutOom),
             true,
@@ -745,7 +913,7 @@ fn analyze_tests(
     if log.contains("make: *** [test] Error 1") {
         let reason = "Test step failed with Error 1".to_string();
         return (
-            "0".to_string(),
+            Some(0),
             Some(reason),
             Some(types::FailureCategory::TestFailure),
             true,
@@ -756,14 +924,14 @@ fn analyze_tests(
         let reason =
             "App deployed but no test results found in log".to_string();
         return (
-            "UNK".to_string(),
+            None,
             Some(reason),
             Some(types::FailureCategory::NoTestOutput),
             true,
         );
     }
 
-    ("UNK".to_string(), None, None, false)
+    (None, None, None, false)
 }
 
 /// Read the metadata.json file. This will give us the layer name, the app name, and the target framework
