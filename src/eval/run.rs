@@ -1,5 +1,7 @@
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
+use anyhow::Context;
 use clap::{ArgAction, Args};
 use serde::Serialize;
 
@@ -8,6 +10,7 @@ use crate::eval::{
     prepare::{self},
     types::EvalLayout,
 };
+use crate::validate::types::{ConversionCostCalculator, ModelCosts};
 
 #[derive(Args, Debug, Serialize)]
 pub struct EvalRunArgs {
@@ -85,6 +88,18 @@ pub struct EvalRunArgs {
         help = "Prepare the evaluation harness to run agents. Think of this as a dry run before actually deploying the agents."
     )]
     pub prepare_only: bool,
+
+    #[arg(
+        long,
+        help = "Path to model costs CSV file for cost calculation"
+    )]
+    pub costs_csv: Option<PathBuf>,
+
+    #[arg(
+        long,
+        help = "Output cost summary as JSON to the specified file"
+    )]
+    pub cost_json_output: Option<PathBuf>,
 }
 
 // Create the evaluation output directory if it doesn't
@@ -115,8 +130,40 @@ pub fn run(mut args: EvalRunArgs) -> anyhow::Result<i32> {
         return Ok(0);
     }
 
+    // Create cost calculator if costs CSV is provided
+    let cost_calculator = if let Some(ref costs_path) = args.costs_csv {
+        match ModelCosts::load_from_csv(costs_path) {
+            Ok(costs) => {
+                log::info!("Loaded model costs from {}", costs_path.display());
+                Some(Arc::new(Mutex::new(ConversionCostCalculator::with_costs(costs))))
+            },
+            Err(e) => {
+                log::warn!("Failed to load model costs: {}. Continuing without cost calculation.", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     log::debug!("Dispatching Agent(s)");
-    driver::dispatch_agent(&args.agent_dir, &eval_layout)?;
+    driver::dispatch_agent(&args.agent_dir, &eval_layout, cost_calculator.clone())?;
+
+    // Print cost summary and optionally write JSON output
+    if let Some(calc) = cost_calculator {
+        if let Ok(mut calc_lock) = calc.lock() {
+            calc_lock.finalize_costs();
+            calc_lock.print_summary();
+            
+            // Output JSON if requested
+            if let Some(ref json_path) = args.cost_json_output {
+                let json_output = calc_lock.to_json();
+                std::fs::write(json_path, json_output)
+                    .with_context(|| format!("Failed to write cost JSON to {}", json_path.display()))?;
+                log::info!("Cost summary written to {}", json_path.display());
+            }
+        }
+    }
 
     Ok(0)
 }

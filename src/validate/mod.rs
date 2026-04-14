@@ -1,4 +1,4 @@
-mod types;
+pub mod types;
 
 use anyhow::{anyhow, Context};
 use clap::Args;
@@ -13,7 +13,7 @@ use std::io::IsTerminal;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use wait_timeout::ChildExt;
@@ -44,6 +44,18 @@ pub struct ValidateArgs {
         help = "Only reanalyze existing run.log files without running make test again"
     )]
     pub reanalyze: bool,
+
+    #[arg(
+        long,
+        help = "Path to model costs CSV file for cost calculation"
+    )]
+    pub costs_csv: Option<PathBuf>,
+
+    #[arg(
+        long,
+        help = "Output cost summary as JSON to the specified file"
+    )]
+    pub cost_json_output: Option<PathBuf>,
 }
 
 // Each worker will send back to progress bar thread one of these
@@ -90,6 +102,22 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
 
     let total = dirs.len();
 
+    // Create cost calculator to track conversion statistics
+    let cost_calculator = if let Some(ref costs_path) = args.costs_csv {
+        match types::ModelCosts::load_from_csv(costs_path) {
+            Ok(costs) => {
+                log::info!("Loaded model costs from {}", costs_path.display());
+                Arc::new(Mutex::new(types::ConversionCostCalculator::with_costs(costs)))
+            },
+            Err(e) => {
+                log::warn!("Failed to load model costs: {}. Continuing without cost calculation.", e);
+                Arc::new(Mutex::new(types::ConversionCostCalculator::new()))
+            }
+        }
+    } else {
+        Arc::new(Mutex::new(types::ConversionCostCalculator::new()))
+    };
+
     let (tx, rx) = mpsc::channel::<UiMessage>();
 
     // Set up the terminal printer aggregrator that will aggregate the responses
@@ -119,16 +147,16 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     });
 
     // Dispatch parallel calls (one for each directory I found above)
-    dirs.par_iter().for_each_with(tx.clone(), |tx, dir| {
+    dirs.par_iter().for_each_with((tx.clone(), cost_calculator.clone()), |(tx, calc), dir| {
         let res: anyhow::Result<()> =  fs::read_dir(dir)
             .with_context(|| format!("Failed to read sub directories of {}", dir.display()))
             .and_then(|entries| {
                 entries
                     .filter_map(Result::ok) // ignore any subdirs that are not readable. This shouldn't happen but still...
                     .map(|e| e.path())
-                    .filter(|p| p.is_dir() && p.file_name().to_string_lossy().starts_with("run_"))
+                    .filter(|p| p.is_dir() && p.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.starts_with("run_")))
                     .try_for_each(|subdir| {
-                        if reanalyze {
+                        let result = if reanalyze {
                             reanalyze_existing_logs(&subdir)
                         } else {
                             copy_validation_harness_and_run_make_test(
@@ -136,7 +164,22 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                                 &subdir,
                                 args.timeout,
                             )
+                        };
+
+                        // After processing, collect statistics from metadata
+                        if result.is_ok() {
+                            if let Ok(metadata_content) = fs::read_to_string(subdir.join("metadata.json")) {
+                                if let Ok(metadata) = serde_json::from_str::<types::Metadata>(&metadata_content) {
+                                    // Look for agent.out file in validation directory
+                                    let agent_out_path = subdir.join("validation").join("agent.out");
+                                    if let Ok(mut calc_lock) = calc.lock() {
+                                        calc_lock.add_conversion(&metadata, &agent_out_path);
+                                    }
+                                }
+                            }
                         }
+
+                        result
                     })
             });
 
@@ -171,6 +214,21 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
     // Thats it---discard any stray transmitters
     drop(tx);
     tui.join().map_err(|e| anyhow!("TUI panicked: {:?}", e))??;
+
+    // Finalize costs and print summary after all validations are complete
+    if let Ok(mut calc) = cost_calculator.lock() {
+        calc.finalize_costs();
+        calc.print_summary();
+        
+        // Output JSON if requested
+        if let Some(ref json_path) = args.cost_json_output {
+            let json_output = calc.to_json();
+            fs::write(json_path, json_output)
+                .with_context(|| format!("Failed to write cost JSON to {}", json_path.display()))?;
+            log::info!("Cost summary written to {}", json_path.display());
+        }
+    }
+
     Ok(0)
 }
 

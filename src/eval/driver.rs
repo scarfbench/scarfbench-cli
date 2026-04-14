@@ -1,4 +1,5 @@
 use crate::eval::types::{EvalLayout, RunMetaData};
+use crate::validate::types::{ConversionCostCalculator, Metadata};
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 use std::{
@@ -6,12 +7,14 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::Command,
+    sync::{Arc, Mutex},
 };
 
 /// The main helper to dispatch calls to the user defined agent
 pub fn dispatch_agent(
     agent_dir: &Path,
     eval_layout: &EvalLayout,
+    cost_calculator: Option<Arc<Mutex<ConversionCostCalculator>>>,
 ) -> anyhow::Result<()> {
     for (eval_key, eval_group) in eval_layout {
         // If the current dir eval_root/{agent_name}__{layer}__.../ doesn't contain the current agent dir thjen we skip that
@@ -92,7 +95,7 @@ pub fn dispatch_agent(
 
                     if result.status.success() {
                         log::debug!(
-                            "Agent {} exectuion complete",
+                            "Agent {} execution complete",
                             eval_key.agent()
                         );
                         run_metadata.set_status(String::from("CONVERTED"));
@@ -107,6 +110,20 @@ pub fn dispatch_agent(
                             &run_metadata,
                         )?;
                     }
+
+                    // Collect cost statistics from agent.out if calculator is provided
+                    // The agent.out file contains stream-json output with usage data from each API call
+                    if let Some(ref calc) = cost_calculator {
+                        if let Ok(metadata_content) = fs::read_to_string(eval_instance.root().join("metadata.json")) {
+                            if let Ok(metadata) = serde_json::from_str::<Metadata>(&metadata_content) {
+                                let agent_out_path = eval_instance.validation().join("agent.out");
+                                if let Ok(mut calc_lock) = calc.lock() {
+                                    calc_lock.add_conversion(&metadata, &agent_out_path);
+                                }
+                            }
+                        }
+                    }
+
                     Ok(())
                 })
                 .collect()
