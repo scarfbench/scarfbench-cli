@@ -121,6 +121,51 @@ fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
                 .join(eval_instance_key.repr())
                 .join(format!("run_{}", run));
 
+            // Check if CHANGELOG.md already exists in the output directory
+            // If it does, skip this run entirely (conversion already completed)
+            let changelog_path = eval_instance_dir.join("output").join("CHANGELOG.md");
+            if changelog_path.exists() {
+                log::info!(
+                    "CHANGELOG.md already exists in {}. Skipping this run (already completed).",
+                    eval_instance_dir.join("output").display()
+                );
+                
+                // Still need to add this run to the runs vector for consistency
+                // but we won't copy files or create directories
+                let eval_input_dir: PathBuf = eval_instance_dir.join("input");
+                let eval_output_dir: PathBuf = eval_instance_dir.join("output");
+                let eval_validation_dir: PathBuf = eval_instance_dir.join("validation");
+                
+                runs.push(EvalInstance::new(
+                    eval_instance_dir,
+                    eval_input_dir,
+                    eval_output_dir,
+                    eval_validation_dir,
+                ));
+                continue;
+            }
+
+            // If the run directory exists but CHANGELOG.md doesn't, delete it for a clean start
+            // Double-check that CHANGELOG.md doesn't exist before deleting
+            if eval_instance_dir.exists() && !changelog_path.exists() {
+                log::info!(
+                    "Run directory exists without CHANGELOG.md at {}. Deleting for clean start.",
+                    eval_instance_dir.display()
+                );
+                match fs::remove_dir_all(&eval_instance_dir) {
+                    Ok(_) => {
+                        log::debug!("Successfully deleted incomplete run directory");
+                    },
+                    Err(e) => {
+                        anyhow::bail!(
+                            "Failed to delete incomplete run directory {}: {}",
+                            eval_instance_dir.display(),
+                            e
+                        );
+                    },
+                }
+            }
+
             // Create the outer eval directory
             match create_dir_all(&eval_instance_dir) {
                 Ok(_) => {
@@ -276,8 +321,6 @@ fn copy_app_dir(
             n if n == std::ffi::OsStr::new("smoke.py")
               || n == std::ffi::OsStr::new("smoke")
               || n == std::ffi::OsStr::new("Makefile")
-              || n == std::ffi::OsStr::new(".dockerignore")
-              || n == std::ffi::OsStr::new("Dockerfile")
         ) {
             log::trace!("Skipping file {}", file_name.to_string_lossy());
             continue;

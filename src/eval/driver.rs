@@ -1,4 +1,5 @@
-use crate::eval::types::{AgentConfig, EvalLayout, RunMetaData};
+use crate::eval::types::{AgentConfig, EvalInstance, EvalLayout, RunMetaData};
+use crate::validate::types::{ConversionCostCalculator, Metadata};
 use std::io::ErrorKind;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
@@ -7,12 +8,14 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::Command,
+    sync::{Arc, Mutex},
 };
 
 /// The main helper to dispatch calls to the user defined agent
 pub fn dispatch_agent(
     agent_dir: &Path,
     eval_layout: &EvalLayout,
+    cost_calculator: Option<Arc<Mutex<ConversionCostCalculator>>>,
 ) -> anyhow::Result<()> {
     // Load agent.toml from the agent_dir. This gives us the proper agent name (matched
     // against metadata.json's solution_name) and the entrypoint script to invoke.
@@ -33,6 +36,23 @@ pub fn dispatch_agent(
     };
 
     for (eval_key, eval_group) in eval_layout {
+        // Check how many runs are already complete before starting
+        let total_runs = eval_group.runs().len();
+        let completed_runs: Vec<&EvalInstance> = eval_group
+            .into_iter()
+            .filter(|eval_instance| {
+                eval_instance.output().join("CHANGELOG.md").exists()
+            })
+            .collect();
+        
+        if !completed_runs.is_empty() {
+            println!("✓ Found {} of {} runs already completed (CHANGELOG.md exists)",
+                     completed_runs.len(), total_runs);
+            for eval_instance in &completed_runs {
+                println!("  ✓ Skipping: {}", eval_instance.output().display());
+            }
+        }
+
         let pool = ThreadPoolBuilder::new()
             .num_threads(std::cmp::min(
                 eval_group.runs().len(),
@@ -46,6 +66,13 @@ pub fn dispatch_agent(
             eval_group
                 .par_iter()
                 .map(|eval_instance| -> anyhow::Result<()> {
+                    // Check if CHANGELOG.md already exists - if so, skip execution
+                    let changelog_path = eval_instance.output().join("CHANGELOG.md");
+                    if changelog_path.exists() {
+                        // Already logged above, just skip silently
+                        return Ok(());
+                    }
+
                     // Read the current eval metadata
                     let mut run_metadata: RunMetaData = fs::read_to_string(
                         eval_instance.root().join("metadata.json"),
@@ -102,7 +129,7 @@ pub fn dispatch_agent(
 
                     if result.status.success() {
                         log::debug!(
-                            "Agent {} exectuion complete",
+                            "Agent {} execution complete",
                             eval_key.agent()
                         );
                         run_metadata.set_status(String::from("CONVERTED"));
@@ -117,6 +144,34 @@ pub fn dispatch_agent(
                             &run_metadata,
                         )?;
                     }
+
+                    // Write individual cost file for this run if calculator is provided
+                    if let Some(ref calc) = cost_calculator {
+                        if let Ok(metadata_content) = fs::read_to_string(eval_instance.root().join("metadata.json")) {
+                            if let Ok(metadata) = serde_json::from_str::<Metadata>(&metadata_content) {
+                                let agent_out_path = eval_instance.validation().join("agent.out");
+                                
+                                // Create a temporary calculator for this single run
+                                if let Ok(calc_lock) = calc.lock() {
+                                    if let Some(model_costs) = calc_lock.get_model_costs() {
+                                        let mut run_calc = ConversionCostCalculator::with_costs(model_costs.clone());
+                                        run_calc.add_conversion(&metadata, &agent_out_path);
+                                        run_calc.finalize_costs();
+                                        
+                                        // Write cost file to run directory
+                                        let cost_file = eval_instance.root().join("costs.json");
+                                        let json_output = run_calc.to_json();
+                                        if let Err(e) = fs::write(&cost_file, json_output) {
+                                            log::warn!("Failed to write cost file to {}: {}", cost_file.display(), e);
+                                        } else {
+                                            log::debug!("Cost file written to {}", cost_file.display());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Ok(())
                 })
                 .collect()
