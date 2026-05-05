@@ -145,6 +145,27 @@ fn initialize_evals(args: &EvalRunArgs) -> Result<HashMap<EvalKey, EvalGroup>> {
                 continue;
             }
 
+            // If the run directory exists but CHANGELOG.md doesn't, delete it for a clean start
+            // Double-check that CHANGELOG.md doesn't exist before deleting
+            if eval_instance_dir.exists() && !changelog_path.exists() {
+                log::info!(
+                    "Run directory exists without CHANGELOG.md at {}. Deleting for clean start.",
+                    eval_instance_dir.display()
+                );
+                match fs::remove_dir_all(&eval_instance_dir) {
+                    Ok(_) => {
+                        log::debug!("Successfully deleted incomplete run directory");
+                    },
+                    Err(e) => {
+                        anyhow::bail!(
+                            "Failed to delete incomplete run directory {}: {}",
+                            eval_instance_dir.display(),
+                            e
+                        );
+                    },
+                }
+            }
+
             // Create the outer eval directory
             match create_dir_all(&eval_instance_dir) {
                 Ok(_) => {

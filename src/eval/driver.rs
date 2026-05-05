@@ -1,4 +1,4 @@
-use crate::eval::types::{AgentConfig, EvalLayout, RunMetaData};
+use crate::eval::types::{AgentConfig, EvalInstance, EvalLayout, RunMetaData};
 use crate::validate::types::{ConversionCostCalculator, Metadata};
 use std::io::ErrorKind;
 use rayon::ThreadPoolBuilder;
@@ -36,6 +36,23 @@ pub fn dispatch_agent(
     };
 
     for (eval_key, eval_group) in eval_layout {
+        // Check how many runs are already complete before starting
+        let total_runs = eval_group.runs().len();
+        let completed_runs: Vec<&EvalInstance> = eval_group
+            .into_iter()
+            .filter(|eval_instance| {
+                eval_instance.output().join("CHANGELOG.md").exists()
+            })
+            .collect();
+        
+        if !completed_runs.is_empty() {
+            println!("✓ Found {} of {} runs already completed (CHANGELOG.md exists)",
+                     completed_runs.len(), total_runs);
+            for eval_instance in &completed_runs {
+                println!("  ✓ Skipping: {}", eval_instance.output().display());
+            }
+        }
+
         let pool = ThreadPoolBuilder::new()
             .num_threads(std::cmp::min(
                 eval_group.runs().len(),
@@ -49,6 +66,13 @@ pub fn dispatch_agent(
             eval_group
                 .par_iter()
                 .map(|eval_instance| -> anyhow::Result<()> {
+                    // Check if CHANGELOG.md already exists - if so, skip execution
+                    let changelog_path = eval_instance.output().join("CHANGELOG.md");
+                    if changelog_path.exists() {
+                        // Already logged above, just skip silently
+                        return Ok(());
+                    }
+
                     // Read the current eval metadata
                     let mut run_metadata: RunMetaData = fs::read_to_string(
                         eval_instance.root().join("metadata.json"),

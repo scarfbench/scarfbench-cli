@@ -58,6 +58,10 @@ pub struct ValidateArgs {
     )]
     pub cost_json_output: Option<PathBuf>,
 
+    #[arg(
+        long,
+        help = "If set, write a leaderboard JSON file into the conversions dir."
+    )]
     pub leaderboard_out: bool,
 
     #[arg(
@@ -65,6 +69,25 @@ pub struct ValidateArgs {
         help = "If set, skip running `make test` and only re-parse existing run.log files."
     )]
     pub dont_rerun: bool,
+
+    #[arg(
+        long,
+        help = "If set, skip conversions that already have a run.log file."
+    )]
+    pub skip_existing: bool,
+
+    #[arg(
+        long = "rerun-unk",
+        value_name = "FIELD",
+        help = "Rerun validations where the specified field (compile, deploy, or test) has UNK value in metadata.json"
+    )]
+    pub rerun_unk: Option<String>,
+
+    #[arg(
+        long,
+        help = "If set, automatically retry validations that failed due to transient infrastructure errors (network timeouts, TLS errors, Docker daemon issues)."
+    )]
+    pub retry: bool,
 
 }
 
@@ -86,6 +109,18 @@ enum UiMessage {
 /// e. Pipe the contents of the `make logs` command to validation/run.log file and terminate.
 /// g. Parallelize the whole pipeline with rayon.
 pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
+    // Validate rerun-unk field if provided
+    if let Some(ref field) = args.rerun_unk {
+        let valid_fields = ["compile", "deploy", "test"];
+        if !valid_fields.contains(&field.as_str()) {
+            anyhow::bail!(
+                "Invalid field '{}' for --rerun-unk. Must be one of: compile, deploy, test",
+                field
+            );
+        }
+        log::info!("Will rerun validations where {} field is UNK", field);
+    }
+
     let conversions_dir = args.conversions_dir.clone();
 
     let dirs: Vec<_> = WalkDir::new(&conversions_dir)
@@ -163,9 +198,67 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                     .map(|e| e.path())
                     .filter(|p| p.is_dir() && p.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.starts_with("run_")))
                     .try_for_each(|subdir| {
+                        // Skip conversions that don't have a CHANGELOG.md in the output folder
+                        let changelog_path = subdir.join("output").join("CHANGELOG.md");
+                        if !changelog_path.exists() {
+                            log::debug!("Skipping {} - no CHANGELOG.md found in output folder", subdir.display());
+                            return Ok(());
+                        }
+                        
+                        let log_path = subdir.join("validation").join("run.log");
+                        
+                        // If --rerun-unk is set, check if this run has UNK in the specified field
+                        if let Some(ref field) = args.rerun_unk {
+                            let metadata_path = subdir.join("metadata.json");
+                            if metadata_path.exists() {
+                                match fs::read_to_string(&metadata_path)
+                                    .and_then(|content| {
+                                        serde_json::from_str::<types::Metadata>(&content)
+                                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+                                    }) {
+                                    Ok(metadata) => {
+                                        let has_unk = match field.as_str() {
+                                            "compile" => matches!(metadata.compile_ok, types::ValidationOutcome::Unk),
+                                            "deploy" => matches!(metadata.deploy_ok, types::ValidationOutcome::Unk),
+                                            "test" => metadata.tests_passed.is_none(),
+                                            _ => false,
+                                        };
+                                        
+                                        // Skip if this run doesn't have UNK in the specified field
+                                        if !has_unk {
+                                            return Ok(());
+                                        }
+                                        
+                                        // If it has UNK and we're NOT in dont-rerun mode, delete the run.log to force rerun
+                                        if !args.dont_rerun && log_path.exists() {
+                                            if let Err(e) = fs::remove_file(&log_path) {
+                                                log::warn!("Failed to remove {}: {}", log_path.display(), e);
+                                            } else {
+                                                log::info!("Removed {} (has UNK in {})", log_path.display(), field);
+                                            }
+                                        }
+                                        // Continue to run validation for this UNK case
+                                    },
+                                    Err(e) => {
+                                        log::warn!("Failed to read metadata for {}: {}", subdir.display(), e);
+                                        return Ok(());
+                                    }
+                                }
+                            } else {
+                                // If metadata.json doesn't exist but we're filtering by --rerun-unk,
+                                // skip this run since we can't determine if it has UNK
+                                log::debug!("Skipping {} - metadata.json not found (--rerun-unk mode)", subdir.display());
+                                return Ok(());
+                            }
+                        } else {
+                            // Skip if --skip-existing is set and run.log already exists
+                            if args.skip_existing && log_path.exists() {
+                                return Ok(());
+                            }
+                        }
+                        
                         let result = if args.dont_rerun {
                             // Just parse existing logs without running tests
-                            let log_path = subdir.join("validation").join("run.log");
                             if log_path.exists() {
                                 parse_run_log_and_update_metadata(&log_path, &args.validations_dir)
                             } else {
@@ -173,13 +266,50 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<i32> {
                             }
                         } else {
                             // Run the test and then parse the log
-                            copy_validation_harness_and_run_make_test(
+                            let run_result = copy_validation_harness_and_run_make_test(
                                 &args.validations_dir,
                                 &subdir,
                                 args.timeout,
                             ).and_then(|log_path| {
                                 parse_run_log_and_update_metadata(&log_path, &args.validations_dir)
-                            })
+                            });
+
+                            // If --retry is set and the run failed due to infrastructure issues, retry once
+                            if args.retry && run_result.is_ok() {
+                                if let Ok(metadata_content) = fs::read_to_string(subdir.join("metadata.json")) {
+                                    if let Ok(metadata) = serde_json::from_str::<types::Metadata>(&metadata_content) {
+                                        if let Some(ref reason) = metadata.failure_reason {
+                                            if is_infrastructure_failure(reason) {
+                                                log::info!("Retrying {} due to infrastructure failure: {}", subdir.display(), reason);
+                                                // Delete the run.log to force a fresh run
+                                                let retry_log_path = subdir.join("validation").join("run.log");
+                                                if retry_log_path.exists() {
+                                                    let _ = fs::remove_file(&retry_log_path);
+                                                }
+                                                // Retry once
+                                                let retry_result = copy_validation_harness_and_run_make_test(
+                                                    &args.validations_dir,
+                                                    &subdir,
+                                                    args.timeout,
+                                                ).and_then(|log_path| {
+                                                    parse_run_log_and_update_metadata(&log_path, &args.validations_dir)
+                                                });
+                                                retry_result
+                                            } else {
+                                                run_result
+                                            }
+                                        } else {
+                                            run_result
+                                        }
+                                    } else {
+                                        run_result
+                                    }
+                                } else {
+                                    run_result
+                                }
+                            } else {
+                                run_result
+                            }
                         };
 
                         // After processing, collect statistics from metadata
@@ -402,7 +532,7 @@ fn copy_validation_harness_and_run_make_test(
                             "Unable to access the parent dir of current smoke",
                         )
                         .join("metadata.json"),
-                    &dst_path,
+                    dst_path.join("metadata.json"),
                 )
                 .map(|_| ())
                 .map_err(anyhow::Error::from)
@@ -560,6 +690,39 @@ fn analyze_compile(
     log: &str,
 ) -> (types::ValidationOutcome, Option<String>, Option<types::FailureCategory>)
 {
+    // Check for explicit compile failure marker from Makefile
+    if log.contains("=== COMPILE FAIL ===") {
+        // Try to determine the specific reason for compile failure
+        if log.contains("Could not find the selected project in the reactor") {
+            let reason = "Maven module not found in reactor".to_string();
+            return (
+                types::ValidationOutcome::False,
+                Some(reason),
+                Some(types::FailureCategory::BuildConfigError),
+            );
+        }
+        
+        if log.contains("COMPILATION ERROR")
+            || log.contains("cannot find symbol")
+            || (log.contains("package") && log.contains("does not exist"))
+        {
+            let reason = "Compilation errors detected".to_string();
+            return (
+                types::ValidationOutcome::False,
+                Some(reason),
+                Some(types::FailureCategory::CompileError),
+            );
+        }
+        
+        // Generic compile failure
+        let reason = "Compile failed (see log for details)".to_string();
+        return (
+            types::ValidationOutcome::False,
+            Some(reason),
+            Some(types::FailureCategory::BuildFailure),
+        );
+    }
+    
     // BUILD FAILURE in maven - check this FIRST before BUILD SUCCESS
     if log.contains("BUILD FAILURE") {
         // Check if it's a compile error vs other maven error
@@ -760,6 +923,49 @@ fn analyze_deploy(
         );
     }
 
+    // JAR file not found in container
+    if log.contains("Unable to access jarfile") {
+        let reason = "Container entrypoint references JAR that does not exist in image".to_string();
+        return (
+            types::ValidationOutcome::False,
+            Some(reason),
+            Some(types::FailureCategory::AppStartupFailure),
+        );
+    }
+
+    // JAR not repackaged as executable
+    if log.contains("no main manifest attribute") {
+        let reason = "JAR not repackaged as executable (missing Main-Class manifest entry)".to_string();
+        return (
+            types::ValidationOutcome::False,
+            Some(reason),
+            Some(types::FailureCategory::AppStartupFailure),
+        );
+    }
+
+    // Container exited or stream lost during deployment
+    if log.contains("=== DEPLOY START ===")
+        && (log.contains("unexpected EOF") || log.contains("context canceled"))
+        && !log.contains("=== DEPLOY OK ===")
+    {
+        let reason = "Container stream lost during deployment - container likely crashed".to_string();
+        return (
+            types::ValidationOutcome::False,
+            Some(reason),
+            Some(types::FailureCategory::AppStartupFailure),
+        );
+    }
+
+    // Port mismatch: app started on different port than expected
+    if log.contains("Listening on:") && log.contains("Failed to connect to localhost port 8080") {
+        let reason = "App started on port 9080 but health check expected port 8080".to_string();
+        return (
+            types::ValidationOutcome::True,
+            Some(reason),
+            None,
+        );
+    }
+
     // Log ends with "waiting for app to start..." - process was cut short
     // Check if the log contains this message and doesn't have deployment success or test results after it
     if log.contains("waiting for app to start...") {
@@ -890,6 +1096,20 @@ fn analyze_tests(
     }
 
     (None, None, None, false)
+}
+
+/// Check if a failure reason indicates a transient infrastructure issue that should be retried
+fn is_infrastructure_failure(reason: &str) -> bool {
+    let infra_patterns = [
+        "Remote host terminated the handshake",
+        "Could not transfer artifact",
+        "Cannot connect to the Docker daemon",
+        "dial tcp",
+        "i/o timeout",
+        "failed to solve",
+        "Premature end of Content-Length",
+    ];
+    infra_patterns.iter().any(|p| reason.contains(p))
 }
 
 /// Read the metadata.json file. This will give us the layer name, the app name, and the target framework
